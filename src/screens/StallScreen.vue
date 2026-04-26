@@ -402,15 +402,7 @@ const submitApply = () => {
               :style="isMobileViewport ? mobileModalCardStyle : {}"
             >
               <div class="relative shrink-0 overflow-hidden border-b border-stone-100/80 bg-gradient-to-br from-[#fffaf3] via-white to-[#f7f1e8] px-4 pb-4 pt-4 text-center sm:px-10 sm:pb-6 sm:pt-8 sm:text-left">
-                <div class="absolute right-3 top-3 h-24 w-20 overflow-hidden rounded-[1.2rem] border border-white/80 shadow-lg shadow-stone-200/70 sm:right-8 sm:top-6 sm:h-36 sm:w-28 sm:rounded-[1.8rem]">
-                  <img 
-                    src="https://images.unsplash.com/photo-1543007630-9710e4a00a20?q=80&w=400&auto=format&fit=crop" 
-                    alt="Stall Illustration" 
-                    class="h-full w-full object-cover"
-                  />
-                  <div class="absolute inset-0 bg-gradient-to-t from-stone-950/35 via-stone-950/5 to-transparent"></div>
-                </div>
-                
+
                 <button 
                   @click="showApplyModal = false"
                   class="absolute right-3 top-3 z-20 flex h-10 w-10 items-center justify-center rounded-full border border-stone-100 bg-white/95 text-stone-400 shadow-md transition-all hover:text-stone-900 sm:right-4 sm:top-4"
@@ -418,7 +410,7 @@ const submitApply = () => {
                   <X class="h-5 w-5" />
                 </button>
 
-                <div class="relative z-10 mx-auto max-w-[calc(100%-5.75rem)] space-y-3 sm:mx-0 sm:max-w-[calc(100%-12rem)] sm:space-y-4">
+                <div class="relative z-10 mx-auto max-w-full space-y-3 sm:mx-0 sm:space-y-4">
                   <div class="flex flex-wrap items-center gap-2">
                     <span class="inline-flex items-center rounded-full bg-[#A37B24]/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-[#A37B24]">
                       5步快速入驻

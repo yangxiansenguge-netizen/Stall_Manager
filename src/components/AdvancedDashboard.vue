@@ -113,67 +113,67 @@ const insightsDiscover = [
 </script>
 
 <template>
-  <div class="space-y-8 bg-white rounded-[3rem] p-6 md:p-10 min-h-screen border border-stone-50 shadow-2xl text-left">
+  <div class="space-y-5 md:space-y-8 bg-white rounded-[2rem] md:rounded-[3rem] p-4 sm:p-5 md:p-10 min-h-screen border border-stone-50 shadow-2xl text-left">
     <!-- 顶部标题栏 -->
-    <div class="flex flex-col md:flex-row items-center justify-between gap-6 pb-2">
-      <div class="flex items-center gap-6 w-full md:w-auto">
-        <button @click="emit('back')" class="w-14 h-14 bg-stone-50 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-900 hover:bg-stone-100 transition-all shrink-0">
-          <X class="w-6 h-6" />
+    <div class="flex flex-col md:flex-row items-center justify-between gap-4 md:gap-6 pb-1 md:pb-2">
+      <div class="flex items-center gap-4 md:gap-6 w-full md:w-auto">
+        <button @click="emit('back')" class="w-11 h-11 md:w-14 md:h-14 bg-stone-50 rounded-full flex items-center justify-center text-stone-400 hover:text-stone-900 hover:bg-stone-100 transition-all shrink-0">
+          <X class="w-5 h-5 md:w-6 md:h-6" />
         </button>
         <div class="flex flex-col items-start text-left">
-          <h2 class="text-3xl font-black text-stone-900 tracking-tight leading-none">智能看板</h2>
-          <p class="text-[10px] font-bold text-stone-400 uppercase tracking-widest mt-1">Deep Analytics</p>
+          <h2 class="text-2xl md:text-3xl font-black text-stone-900 tracking-tight leading-none">智能看板</h2>
+          <p class="text-[9px] md:text-[10px] font-bold text-stone-400 uppercase tracking-widest mt-1">Deep Analytics</p>
         </div>
       </div>
       
-      <div class="flex items-center gap-3 w-full md:w-auto">
+      <div class="flex items-center gap-2 md:gap-3 w-full md:w-auto">
         <div class="flex-1 md:flex-none">
-          <button class="w-full flex items-center justify-between gap-8 px-6 py-3.5 bg-stone-50 rounded-2xl border border-stone-100 text-xs font-black text-stone-500">
+          <button class="w-full flex items-center justify-between gap-4 md:gap-8 px-4 md:px-6 py-2.5 md:py-3.5 bg-stone-50 rounded-xl md:rounded-2xl border border-stone-100 text-[11px] md:text-xs font-black text-stone-500">
             {{ reportRange }}
-            <Clock class="w-4 h-4 text-stone-300" />
+            <Clock class="w-3.5 h-3.5 md:w-4 md:h-4 text-stone-300" />
           </button>
         </div>
-        <button class="flex items-center gap-2 px-6 py-3.5 bg-white border border-stone-100 rounded-2xl text-xs font-black text-stone-900 hover:bg-stone-50 transition-all shadow-sm">
-          导出报告 <ChevronRight class="w-4 h-4" />
+        <button class="flex items-center gap-1.5 md:gap-2 px-4 md:px-6 py-2.5 md:py-3.5 bg-white border border-stone-100 rounded-xl md:rounded-2xl text-[11px] md:text-xs font-black text-stone-900 hover:bg-stone-50 transition-all shadow-sm whitespace-nowrap">
+          导出报告 <ChevronRight class="w-3.5 h-3.5 md:w-4 md:h-4" />
         </button>
       </div>
     </div>
 
     <!-- 核心指标卡片 -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-4 text-left">
-      <div v-for="(stat, i) in stats" :key="i" :class="['bg-white p-8 rounded-[3rem] border shadow-[0_20px_50px_rgba(0,0,0,0.03)] flex flex-col justify-between h-[340px] transition-all', stat.borderColor]">
-        <div class="space-y-6">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-8 mt-2 md:mt-4 text-left">
+      <div v-for="(stat, i) in stats" :key="i" :class="['bg-white p-5 md:p-8 rounded-[2rem] md:rounded-[3rem] border shadow-[0_20px_50px_rgba(0,0,0,0.03)] flex flex-col justify-between h-[260px] sm:h-[290px] lg:h-[340px] transition-all', stat.borderColor]">
+        <div class="space-y-4 md:space-y-6">
           <div class="flex justify-between items-start">
-            <div class="flex items-center gap-5">
-              <div :class="['w-14 h-14 rounded-2xl flex items-center justify-center shadow-inner', stat.bg, stat.color]">
-                <component :is="stat.icon" class="w-7 h-7" />
+            <div class="flex items-center gap-3 md:gap-5">
+              <div :class="['w-10 h-10 md:w-14 md:h-14 rounded-xl md:rounded-2xl flex items-center justify-center shadow-inner', stat.bg, stat.color]">
+                <component :is="stat.icon" class="w-5 h-5 md:w-7 md:h-7" />
               </div>
               <div class="space-y-1 flex flex-col items-start text-left">
                 <div class="flex items-center gap-2">
-                  <p class="text-[10px] font-black text-stone-300 uppercase tracking-widest leading-none">{{ stat.label }}</p>
+                  <p class="text-[9px] md:text-[10px] font-black text-stone-300 uppercase tracking-widest leading-none">{{ stat.label }}</p>
                 </div>
                 <div class="flex items-baseline gap-2">
-                   <h4 class="text-4xl font-black text-stone-900 tracking-tighter">{{ stat.value }}</h4>
+                   <h4 class="text-3xl md:text-4xl font-black text-stone-900 tracking-tighter">{{ stat.value }}</h4>
                 </div>
               </div>
             </div>
-            <span class="text-[10px] font-black text-emerald-500 bg-emerald-50 px-4 py-2 rounded-full uppercase tracking-widest leading-none">{{ stat.health }}</span>
+            <span class="text-[9px] md:text-[10px] font-black text-emerald-500 bg-emerald-50 px-3 md:px-4 py-1.5 md:py-2 rounded-full uppercase tracking-widest leading-none">{{ stat.health }}</span>
           </div>
-          <div class="flex items-center gap-2 pl-2">
-            <span class="text-[10px] font-bold text-stone-300">较昨日</span>
-            <span class="text-[11px] font-black text-emerald-500 flex items-center gap-1">
-              <ArrowUp class="w-3 h-3" /> {{ stat.trend.replace('+', '') }}
+          <div class="flex items-center gap-2 pl-1 md:pl-2">
+            <span class="text-[9px] md:text-[10px] font-bold text-stone-300">较昨日</span>
+            <span class="text-[10px] md:text-[11px] font-black text-emerald-500 flex items-center gap-1">
+              <ArrowUp class="w-2.5 h-2.5 md:w-3 md:h-3" /> {{ stat.trend.replace('+', '') }}
             </span>
           </div>
         </div>
 
-        <div class="flex-1 w-full mt-4 relative">
-          <div class="absolute top-0 right-0 text-[10px] font-bold text-stone-300">
+        <div class="flex-1 w-full mt-2 md:mt-4 relative">
+          <div class="absolute top-0 right-0 text-[9px] md:text-[10px] font-bold text-stone-300">
             行业平均 {{ stat.industryAvg }}
           </div>
           <VueApexCharts
             type="area"
-            height="180"
+            height="130"
             :options="stat.options"
             :series="stat.series"
           />
@@ -182,16 +182,16 @@ const insightsDiscover = [
     </div>
 
     <!-- 核心用户画像 -->
-    <div class="bg-white rounded-[3rem] p-8 md:p-12 border border-stone-50 shadow-[0_20px_50px_rgba(0,0,0,0.03)] text-left">
-      <div class="mb-10">
-        <h3 class="text-2xl font-black text-stone-900 tracking-tight leading-none">核心用户画像</h3>
-        <p class="text-[10px] font-bold text-stone-400 uppercase tracking-[0.2em] mt-2">Persona Insights</p>
+    <div class="bg-white rounded-[2rem] md:rounded-[3rem] p-5 md:p-12 border border-stone-50 shadow-[0_20px_50px_rgba(0,0,0,0.03)] text-left">
+      <div class="mb-6 md:mb-10">
+        <h3 class="text-xl md:text-2xl font-black text-stone-900 tracking-tight leading-none">核心用户画像</h3>
+        <p class="text-[9px] md:text-[10px] font-bold text-stone-400 uppercase tracking-[0.2em] mt-2">Persona Insights</p>
       </div>
 
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 md:gap-10 items-center">
         <!-- Donut Chart -->
         <div class="lg:col-span-4 flex justify-center">
-           <div class="w-56 h-56 sm:w-64 sm:h-64 relative">
+           <div class="w-44 h-44 sm:w-56 sm:h-56 md:w-64 md:h-64 relative">
               <VueApexCharts
                 type="donut"
                 width="100%"
@@ -202,13 +202,13 @@ const insightsDiscover = [
         </div>
 
         <!-- Progress Bars -->
-        <div class="lg:col-span-4 space-y-8">
-           <div v-for="(p, idx) in personaSegments" :key="idx" class="flex items-center gap-4">
-              <div class="w-10 h-10 bg-stone-50 rounded-xl flex items-center justify-center text-stone-400">
-                <component :is="p.icon" class="w-5 h-5" />
+        <div class="lg:col-span-4 space-y-5 md:space-y-8">
+           <div v-for="(p, idx) in personaSegments" :key="idx" class="flex items-center gap-3 md:gap-4">
+              <div class="w-9 h-9 md:w-10 md:h-10 bg-stone-50 rounded-lg md:rounded-xl flex items-center justify-center text-stone-400">
+                <component :is="p.icon" class="w-4 h-4 md:w-5 md:h-5" />
               </div>
-              <div class="flex-1 space-y-2">
-                <div class="flex justify-between items-center text-[11px] font-black">
+              <div class="flex-1 space-y-1.5 md:space-y-2">
+                <div class="flex justify-between items-center text-[10px] md:text-[11px] font-black">
                   <span class="text-stone-500">{{ p.name }}</span>
                   <span class="text-stone-900">{{ p.value }}%</span>
                 </div>
@@ -220,21 +220,21 @@ const insightsDiscover = [
         </div>
 
         <!-- Sidebar Discovery -->
-        <div class="lg:col-span-4 bg-[#FFFCF5] rounded-[2.5rem] p-7 border-2 border-[#FEF3C7] shadow-inner relative overflow-hidden">
-          <div class="flex items-center gap-2 mb-6">
+        <div class="lg:col-span-4 bg-[#FFFCF5] rounded-[2rem] md:rounded-[2.5rem] p-5 md:p-7 border-2 border-[#FEF3C7] shadow-inner relative overflow-hidden">
+          <div class="flex items-center gap-2 mb-4 md:mb-6">
             <div class="w-3 h-3 bg-red-400 rounded-sm flex items-center justify-center">
               <X class="w-2 h-2 text-white" />
             </div>
-            <h4 class="text-sm font-black text-stone-700 tracking-tight">洞察发现</h4>
+            <h4 class="text-xs md:text-sm font-black text-stone-700 tracking-tight">洞察发现</h4>
           </div>
-          <div class="space-y-4">
-             <div v-for="(insight, i) in insightsDiscover" :key="i" class="bg-white p-4 rounded-3xl border border-white shadow-[0_8px_20px_rgba(0,0,0,0.02)] flex items-center gap-4 group hover:shadow-md transition-all">
-                <div :class="['w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-sm', insight.bg, insight.color]">
-                  <component :is="insight.icon" class="w-6 h-6" />
+          <div class="space-y-3 md:space-y-4">
+             <div v-for="(insight, i) in insightsDiscover" :key="i" class="bg-white p-3 md:p-4 rounded-2xl md:rounded-3xl border border-white shadow-[0_8px_20px_rgba(0,0,0,0.02)] flex items-center gap-3 md:gap-4 group hover:shadow-md transition-all">
+                <div :class="['w-10 h-10 md:w-12 md:h-12 rounded-xl md:rounded-2xl flex items-center justify-center shrink-0 shadow-sm', insight.bg, insight.color]">
+                  <component :is="insight.icon" class="w-5 h-5 md:w-6 md:h-6" />
                 </div>
                 <div class="text-left">
-                  <h5 class="text-xs font-black text-stone-900 leading-none mb-1.5">{{ insight.title }}</h5>
-                  <p class="text-[9px] font-bold text-stone-400 leading-tight">{{ insight.sub }}</p>
+                  <h5 class="text-[11px] md:text-xs font-black text-stone-900 leading-none mb-1">{{ insight.title }}</h5>
+                  <p class="text-[8px] md:text-[9px] font-bold text-stone-400 leading-tight">{{ insight.sub }}</p>
                 </div>
              </div>
           </div>
