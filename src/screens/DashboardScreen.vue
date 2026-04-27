@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import {
   Sun,
   ChevronRight,
@@ -15,12 +16,39 @@ import {
 } from 'lucide-vue-next';
 import stallCartImage from '../../摊位车.png';
 
-defineProps<{
+const props = defineProps<{
+  merchantName?: string;
   onNavigateToManagement: () => void;
   onNavigateToStallManagement: () => void;
   onNavigateToPlan: () => void;
   onNavigateToAddProduct: () => void;
 }>();
+
+const currentTime = ref(new Date());
+let greetingTimer: ReturnType<typeof setInterval> | null = null;
+
+const greetingText = computed(() => {
+  const hour = currentTime.value.getHours();
+  if (hour >= 6 && hour <= 11) return '早上好';
+  if (hour >= 12 && hour <= 17) return '中午好';
+  if (hour >= 18 && hour <= 23) return '晚上好';
+  return '凌晨好';
+});
+
+const merchantNickName = computed(() => {
+  const name = (props.merchantName ?? '').trim();
+  return name ? `阿${name.slice(-1)}` : '阿掌柜';
+});
+
+onMounted(() => {
+  greetingTimer = setInterval(() => {
+    currentTime.value = new Date();
+  }, 30 * 1000);
+});
+
+onUnmounted(() => {
+  if (greetingTimer) clearInterval(greetingTimer);
+});
 </script>
 
 <template>
@@ -40,7 +68,7 @@ defineProps<{
           <div class="max-w-[58%] space-y-2 sm:max-w-[56%] md:max-w-none">
             <p class="text-[10px] font-black uppercase tracking-[0.2em] text-amber-600/75">黄金营业时段</p>
             <h2 class="flex items-center gap-1.5 text-[1.65rem] font-black leading-none tracking-tight text-stone-900 sm:text-[1.9rem] md:text-[2.35rem]">
-              下午好，阿强 <span class="text-xl sm:text-2xl md:text-[1.9rem]">👋</span>
+              {{ greetingText }}，{{ merchantNickName }} <span class="text-xl sm:text-2xl md:text-[1.9rem]">👋</span>
             </h2>
             <p class="max-w-[10rem] text-[11px] font-medium leading-relaxed text-stone-500 sm:max-w-[12rem] sm:text-xs md:max-w-[18rem] md:text-base">
               抓住黄金时间，开启今天的生意吧！
@@ -138,9 +166,9 @@ defineProps<{
         <h3 class="mb-5 text-lg font-black text-stone-900 sm:mb-6">快捷入口</h3>
         <div class="grid grid-cols-3 gap-2 sm:gap-4">
           <button v-for="(item, idx) in [
-            { label: '申请摊位', desc: '快速申请新摊位', icon: Store, color: 'text-amber-500', bg: 'bg-amber-50', action: onNavigateToStallManagement },
-            { label: '立即出摊', desc: '开始今日营业', icon: Calendar, color: 'text-emerald-500', bg: 'bg-emerald-50', action: onNavigateToPlan },
-            { label: '添加商品', desc: '管理商品信息', icon: Plus, color: 'text-indigo-500', bg: 'bg-indigo-50', action: onNavigateToAddProduct },
+            { label: '申请摊位', desc: '快速申请新摊位', icon: Store, color: 'text-amber-500', bg: 'bg-amber-50', action: props.onNavigateToStallManagement },
+            { label: '立即出摊', desc: '开始今日营业', icon: Calendar, color: 'text-emerald-500', bg: 'bg-emerald-50', action: props.onNavigateToPlan },
+            { label: '添加商品', desc: '管理商品信息', icon: Plus, color: 'text-indigo-500', bg: 'bg-indigo-50', action: props.onNavigateToAddProduct },
           ]" :key="idx" @click="item.action" class="group flex min-w-0 flex-col items-center gap-2.5 sm:gap-3">
             <div :class="['flex h-12 w-12 items-center justify-center rounded-[1.1rem] transition-all group-hover:scale-105 group-hover:shadow-lg group-hover:shadow-stone-200 sm:h-14 sm:w-14 md:h-16 md:w-16 md:rounded-[1.25rem]', item.bg]">
               <component :is="item.icon" :class="['h-5 w-5 sm:h-6 sm:w-6 md:h-8 md:w-8', item.color]" />

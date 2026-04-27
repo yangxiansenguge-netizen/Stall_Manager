@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import Header from './components/Header.vue';
 import BottomNav from './components/BottomNav.vue';
 import AuthScreen from './screens/AuthScreen.vue';
@@ -10,9 +10,90 @@ import SettingsScreen from './screens/SettingsScreen.vue';
 import MessageScreen from './screens/MessageScreen.vue';
 import { Tab } from './types';
 
+interface AuthSession {
+  token: string;
+  merchantId: string;
+  merchantName: string;
+  stallName: string;
+  boothCode: string;
+  phone: string;
+  onboardingStatus: string;
+  expiresAt: string;
+  roles: string[];
+}
+
+interface ApiResponse<T> {
+  success: boolean;
+  message?: string;
+  data?: T;
+}
+
+const AUTH_TOKEN_KEY = 'stall_auth_token';
+const AUTH_SESSION_KEY = 'stall_auth_session';
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '').trim();
+
 const isLoggedIn = ref(false);
+const isAuthLoading = ref(true);
 const activeTab = ref<Tab>('home');
 const businessSubView = ref<'main' | 'products' | 'advanced'>('main');
+const authSession = ref<AuthSession | null>(null);
+
+const merchantName = computed(() => authSession.value?.merchantName ?? '');
+
+
+const clearAuth = () => {
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+  localStorage.removeItem(AUTH_SESSION_KEY);
+  isLoggedIn.value = false;
+  authSession.value = null;
+  activeTab.value = 'home';
+  businessSubView.value = 'main';
+};
+
+const requestProfile = async (token: string): Promise<AuthSession> => {
+  const response = await fetch(`${API_BASE_URL}/api/auth/profile`, {
+    headers: {
+      Authorization: `Bearer ${token}`
+    }
+  });
+
+  const payload = (await response.json()) as ApiResponse<AuthSession>;
+  if (!response.ok || !payload.success || !payload.data) {
+    throw new Error(payload.message || '登录状态已失效');
+  }
+  return payload.data;
+};
+
+const handleLogin = (session: AuthSession) => {
+  localStorage.setItem(AUTH_TOKEN_KEY, session.token);
+  localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session));
+  authSession.value = session;
+  isLoggedIn.value = true;
+  activeTab.value = 'home';
+};
+
+const handleLogout = () => {
+  clearAuth();
+};
+
+onMounted(async () => {
+  const token = localStorage.getItem(AUTH_TOKEN_KEY);
+  if (!token) {
+    isAuthLoading.value = false;
+    return;
+  }
+
+  try {
+    const session = await requestProfile(token);
+    localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session));
+    authSession.value = session;
+    isLoggedIn.value = true;
+  } catch {
+    clearAuth();
+  } finally {
+    isAuthLoading.value = false;
+  }
+});
 
 const onTabChange = (tab: Tab) => {
   if (tab === 'business' && activeTab.value === 'business') {
@@ -32,40 +113,45 @@ const navigateToStall = () => {
 </script>
 
 <template>
-  <div v-if="!isLoggedIn" class="min-h-screen bg-[#FDFBF7]">
+  <div v-if="isAuthLoading" class="flex min-h-screen items-center justify-center bg-[#FDFBF7] text-stone-500">
+    正在校验登录状态...
+  </div>
+
+  <div v-else-if="!isLoggedIn" class="min-h-screen bg-[#FDFBF7]">
     <Transition name="fade" mode="out-in">
-      <AuthScreen @login="isLoggedIn = true" />
+      <AuthScreen @login="handleLogin" />
     </Transition>
   </div>
 
   <div v-else class="min-h-screen bg-[#F8F7F5] pb-[calc(6.5rem+env(safe-area-inset-bottom))] flex flex-col items-center">
     <Header @open-messages="activeTab = 'messages'" />
-    
+
     <main class="w-full max-w-screen-xl mx-auto flex-1 px-3 sm:px-4 md:px-6 pt-[calc(5rem+env(safe-area-inset-top))] sm:pt-[calc(6rem+env(safe-area-inset-top))] pb-[calc(2rem+env(safe-area-inset-bottom))] sm:pb-12">
       <Transition name="page-fade" mode="out-in">
         <div :key="activeTab" class="w-full">
-          <DashboardScreen 
+          <DashboardScreen
             v-if="activeTab === 'home'"
+            :merchant-name="merchantName"
             @navigate-to-management="navigateToBusiness('main')"
             @navigate-to-stall-management="navigateToStall"
             @navigate-to-plan="navigateToStall"
             @navigate-to-add-product="navigateToBusiness('products')"
           />
           <StallScreen v-else-if="activeTab === 'stall'" />
-          <BusinessScreen 
+          <BusinessScreen
             v-else-if="activeTab === 'business'"
             :initial-view="businessSubView"
             @view-change="val => businessSubView = val"
           />
-          <SettingsScreen v-else-if="activeTab === 'settings'" @logout="isLoggedIn = false" />
+          <SettingsScreen v-else-if="activeTab === 'settings'" :on-logout="handleLogout" />
           <MessageScreen v-else-if="activeTab === 'messages'" />
         </div>
       </Transition>
     </main>
 
-    <BottomNav 
-      :active-tab="activeTab" 
-      @tab-change="onTabChange" 
+    <BottomNav
+      :active-tab="activeTab"
+      @tab-change="onTabChange"
     />
   </div>
 </template>
