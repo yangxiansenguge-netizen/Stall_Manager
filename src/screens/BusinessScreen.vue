@@ -1,20 +1,21 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue';
-import { 
-  PieChart, 
-  LayoutGrid 
+import { ref, watch } from 'vue';
+import {
+  PieChart,
+  LayoutGrid
 } from 'lucide-vue-next';
 import BusinessMain from './BusinessMain.vue';
 import ProductManagement from '../components/ProductManagement.vue';
+import ManualOrderPanel from '../components/ManualOrderPanel.vue';
 import AdvancedDashboard from '../components/AdvancedDashboard.vue';
 
 const props = defineProps<{
-  initialView?: 'main' | 'products' | 'advanced';
+  initialView?: 'main' | 'products' | 'manualOrder' | 'advanced';
 }>();
 
 const emit = defineEmits(['view-change']);
 
-const activeView = ref<'main' | 'products' | 'advanced'>(props.initialView || 'main');
+const activeView = ref<'main' | 'products' | 'manualOrder' | 'advanced'>(props.initialView || 'main');
 
 watch(() => props.initialView, (newView) => {
   if (newView) {
@@ -22,7 +23,7 @@ watch(() => props.initialView, (newView) => {
   }
 });
 
-const handleSetView = (view: 'main' | 'products' | 'advanced') => {
+const handleSetView = (view: 'main' | 'products' | 'manualOrder' | 'advanced') => {
   activeView.value = view;
   emit('view-change', view);
 };
@@ -36,7 +37,7 @@ const handleSetView = (view: 'main' | 'products' | 'advanced') => {
       mode="out-in"
     >
       <component 
-        :is="activeView === 'products' ? ProductManagement : (activeView === 'advanced' ? AdvancedDashboard : BusinessMain)"
+        :is="activeView === 'products' ? ProductManagement : (activeView === 'manualOrder' ? ManualOrderPanel : (activeView === 'advanced' ? AdvancedDashboard : BusinessMain))"
         v-bind="activeView !== 'main' ? { onBack: () => handleSetView('main') } : {}"
         @view-change="handleSetView"
       />

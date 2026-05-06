@@ -166,9 +166,11 @@ onUnmounted(() => {
         <h3 class="mb-5 text-lg font-black text-stone-900 sm:mb-6">快捷入口</h3>
         <div class="grid grid-cols-3 gap-2 sm:gap-4">
           <button v-for="(item, idx) in [
-            { label: '申请摊位', desc: '快速申请新摊位', icon: Store, color: 'text-amber-500', bg: 'bg-amber-50', action: props.onNavigateToStallManagement },
-            { label: '立即出摊', desc: '开始今日营业', icon: Calendar, color: 'text-emerald-500', bg: 'bg-emerald-50', action: props.onNavigateToPlan },
+            { label: '立即入驻', desc: '快速申请新摊位', icon: Store, color: 'text-amber-500', bg: 'bg-amber-50', action: props.onNavigateToStallManagement },
+            { label: '手动点单', desc: '进入手动点单台', icon: Calendar, color: 'text-emerald-500', bg: 'bg-emerald-50', action: props.onNavigateToPlan },
             { label: '添加商品', desc: '管理商品信息', icon: Plus, color: 'text-indigo-500', bg: 'bg-indigo-50', action: props.onNavigateToAddProduct },
+
+
           ]" :key="idx" @click="item.action" class="group flex min-w-0 flex-col items-center gap-2.5 sm:gap-3">
             <div :class="['flex h-12 w-12 items-center justify-center rounded-[1.1rem] transition-all group-hover:scale-105 group-hover:shadow-lg group-hover:shadow-stone-200 sm:h-14 sm:w-14 md:h-16 md:w-16 md:rounded-[1.25rem]', item.bg]">
               <component :is="item.icon" :class="['h-5 w-5 sm:h-6 sm:w-6 md:h-8 md:w-8', item.color]" />

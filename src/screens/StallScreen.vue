@@ -22,12 +22,98 @@ import {
   ShieldCheck,
   Map as MapIcon
 } from 'lucide-vue-next';
+import { buildApiUrl } from '../utils/api';
 
 const userStatus = ref<'none' | 'pending' | 'active'>('none');
+
 const showApplyModal = ref(false);
 const searchQuery = ref('');
 
+
+
+
+interface ApiResponse<T> {
+  success: boolean;
+  message?: string;
+  data?: T;
+}
+
+interface AuthSession {
+  stallName?: string;
+  phone?: string;
+}
+
+
+
+const NIGHT_START_HOUR = 18;
+const NIGHT_END_HOUR = 23;
+const MIN_APPLY_GAP_HOURS = 6;
+
+const toLocalDatetimeInputValue = (date: Date) => {
+  const offset = date.getTimezoneOffset();
+  const local = new Date(date.getTime() - offset * 60 * 1000);
+  return local.toISOString().slice(0, 16);
+};
+
+const getNextNightStart = () => {
+  const minDate = new Date(Date.now() + MIN_APPLY_GAP_HOURS * 60 * 60 * 1000);
+  const candidate = new Date(minDate);
+
+  if (candidate.getHours() < NIGHT_START_HOUR) {
+    candidate.setHours(NIGHT_START_HOUR, 0, 0, 0);
+    return candidate;
+  }
+
+  if (candidate.getHours() > NIGHT_END_HOUR) {
+    candidate.setDate(candidate.getDate() + 1);
+    candidate.setHours(NIGHT_START_HOUR, 0, 0, 0);
+    return candidate;
+  }
+
+  return candidate;
+};
+
+const addHours = (timeStr: string, hours: number) => {
+  const date = new Date(timeStr);
+  if (Number.isNaN(date.getTime())) {
+    return toLocalDatetimeInputValue(getNextNightStart());
+  }
+  date.setHours(date.getHours() + hours);
+  return toLocalDatetimeInputValue(date);
+};
+
+const isNightTime = (date: Date) => {
+  const hour = date.getHours();
+  return hour >= NIGHT_START_HOUR && hour <= NIGHT_END_HOUR;
+};
+
+const selectedAreaName = ref('文化广场 · 默认区域');
+const selectedCategoryName = ref('小吃');
+const stallNameInput = ref('');
+const plannedStartTime = ref(toLocalDatetimeInputValue(getNextNightStart()));
+const plannedEndTime = ref(addHours(plannedStartTime.value, 2));
+const displayImageName = ref('经营展示图.png');
+const applicationNote = ref('');
+const selectedCoordinate = ref({ latitude: 31.2304, longitude: 121.4737 });
+const submittingApply = ref(false);
+const applyError = ref('');
+const applySuccess = ref('');
+
+const minimumAllowedDateTimeInput = computed(() => {
+  const minDate = new Date(Date.now() + MIN_APPLY_GAP_HOURS * 60 * 60 * 1000);
+  return toLocalDatetimeInputValue(minDate);
+});
+
+const categoryOptions = ['小吃', '手工饰品', '饮品', '作品', '其他'];
+
+const mockLocations = [
+  { name: '文化广场 · 默认区域', latitude: 31.2304, longitude: 121.4737 },
+  { name: '滨江创意街区', latitude: 31.2216, longitude: 121.4915 },
+  { name: '老街美食巷', latitude: 31.2389, longitude: 121.4632 }
+];
+
 const hotAreas = [
+
   { title: '文化广场夜市', heat: '9.8', distance: '1.2km', img: 'https://images.unsplash.com/photo-1533900298318-6b8da08a523e?q=80&w=400&auto=format&fit=crop' },
   { title: '滨江创意街区', heat: '9.5', distance: '2.5km', img: 'https://images.unsplash.com/photo-1555529771-835f59fc5efe?q=80&w=400&auto=format&fit=crop' },
   { title: '老街美食巷', heat: '9.2', distance: '0.8km', img: 'https://images.unsplash.com/photo-1565123409695-7b5ef63a2efb?q=80&w=400&auto=format&fit=crop' },
@@ -94,14 +180,161 @@ onBeforeUnmount(() => {
 });
 
 const handleApply = () => {
+  const sessionRaw = localStorage.getItem('stall_auth_session');
+  const session: AuthSession = sessionRaw ? JSON.parse(sessionRaw) : {};
+  if (!stallNameInput.value.trim()) {
+    stallNameInput.value = (session.stallName || '').trim();
+  }
   showApplyModal.value = true;
+  applyError.value = '';
   updateViewport();
 };
 
-const submitApply = () => {
-  userStatus.value = 'pending';
-  showApplyModal.value = false;
+const submitApply = async () => {
+  applyError.value = '';
+  applySuccess.value = '';
+
+  const stallName = stallNameInput.value.trim();
+  if (!stallName) {
+    applyError.value = '请输入摊位名称';
+    return;
+  }
+
+  if (!plannedStartTime.value || !plannedEndTime.value) {
+    applyError.value = '请完整选择申请时间';
+    return;
+  }
+
+  const startDate = new Date(plannedStartTime.value);
+  const endDate = new Date(plannedEndTime.value);
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+    applyError.value = '申请时间格式不正确';
+    return;
+  }
+
+  const minDate = new Date(Date.now() + MIN_APPLY_GAP_HOURS * 60 * 60 * 1000);
+  if (startDate.getTime() < minDate.getTime()) {
+    applyError.value = `开始时间需至少晚于当前 ${MIN_APPLY_GAP_HOURS} 小时`;
+    return;
+  }
+
+  if (!isNightTime(startDate) || !isNightTime(endDate)) {
+    applyError.value = '仅支持夜间摆摊时间（18:00-23:59）';
+    return;
+  }
+
+  if (endDate.getTime() <= startDate.getTime()) {
+    applyError.value = '结束时间必须晚于开始时间';
+    return;
+  }
+
+  submittingApply.value = true;
+  try {
+    const authToken = localStorage.getItem('stall_auth_token') || '';
+    const sessionRaw = localStorage.getItem('stall_auth_session');
+    const session: AuthSession = sessionRaw ? JSON.parse(sessionRaw) : {};
+
+    const mergedNote = [
+      applicationNote.value.trim(),
+      `申请时段：${plannedStartTime.value.replace('T', ' ')} - ${plannedEndTime.value.replace('T', ' ')}`
+    ]
+      .filter(Boolean)
+      .join('；');
+
+    const response = await fetch(buildApiUrl('/api/stalls/onboarding/applications'), {
+
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${authToken}`
+      },
+      body: JSON.stringify({
+        stallName,
+        contactPhone: session.phone || '',
+        areaName: selectedAreaName.value,
+        categoryName: selectedCategoryName.value,
+        plannedStartTime: startDate.toISOString().slice(0, 19),
+        locationLatitude: selectedCoordinate.value.latitude,
+        locationLongitude: selectedCoordinate.value.longitude,
+        displayImageName: displayImageName.value.trim() || '经营展示图.png',
+        note: mergedNote
+      })
+    });
+
+   
+
+    const payload = (await response.json()) as ApiResponse<{ applicationId: string }>;
+    if (!response.ok || !payload.success) {
+      throw new Error(payload.message || '提交申请失败');
+    }
+
+    userStatus.value = 'active';
+
+    applySuccess.value = `提交成功：${payload.data?.applicationId || ''}`;
+    showApplyModal.value = false;
+  } catch (error) {
+    applyError.value = error instanceof Error ? error.message : '提交申请失败';
+  } finally {
+    submittingApply.value = false;
+  }
 };
+
+// --upload start
+// --- 新增上传相关的状态 ---
+const fileInputRef = ref<HTMLInputElement | null>(null);
+const isUploading = ref(false);
+const uploadProgress = ref(0);
+
+// --- 新增 OSS 上传逻辑 ---
+const triggerUpload = () => {
+  fileInputRef.value?.click();
+};
+
+const handleFileChange = async (event: Event) => {
+  const target = event.target as HTMLInputElement;
+  const file = target.files?.[0];
+  if (!file) return;
+
+  // 1. 基础校验
+  if (file.size > 5 * 1024 * 1024) {
+    applyError.value = '文件大小不能超过 5MB';
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  isUploading.value = true;
+  applyError.value = '';
+  
+  try {
+    // 2. 调用你之前测试成功的 OSS 上传接口
+    const response = await fetch(buildApiUrl('/api/common/upload'), {
+      method: 'POST',
+      body: formData,
+      // 注意：如果是跨域请求且后端没配跨域，这里可能需要处理
+    });
+
+    const result = await response.json();
+
+    if (result.code === 200 || result.success) {
+      // 3. 将返回的 OSS 链接保存到 displayImageName (或你后端接收图片的字段)
+      displayImageName.value = result.data; 
+      applySuccess.value = '图片上传成功';
+    } else {
+      throw new Error(result.message || '上传失败');
+    }
+  } catch (error) {
+    applyError.value = error instanceof Error ? error.message : '图片上传失败，请重试';
+    console.error('Upload Error:', error);
+  } finally {
+    isUploading.value = false;
+    // 清除 input 值，确保同一张图能重复触发上传
+    if (fileInputRef.value) fileInputRef.value.value = '';
+  }
+};
+
+// upload end
 </script>
 
 <template>
@@ -146,10 +379,11 @@ const submitApply = () => {
           </div>
 
           <div class="flex flex-col items-center gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <button class="group inline-flex w-full items-center justify-center gap-3 rounded-2xl bg-stone-900 px-6 py-3.5 text-sm font-black text-white shadow-xl shadow-stone-900/10 transition-all active:scale-95 sm:w-auto">
+            <button @click.stop="handleApply" class="group inline-flex w-full items-center justify-center gap-3 rounded-2xl bg-stone-900 px-6 py-3.5 text-sm font-black text-white shadow-xl shadow-stone-900/10 transition-all active:scale-95 sm:w-auto">
               立即申请入驻
               <ArrowUpRight class="h-4 w-4 transition-transform group-hover:translate-x-1 group-hover:-translate-y-1" />
             </button>
+
             <div class="grid w-full max-w-xs grid-cols-2 gap-2 sm:w-auto sm:min-w-[12rem]">
               <div class="rounded-2xl border border-stone-100 bg-white px-3 py-2 text-center shadow-sm sm:text-left">
                 <p class="text-[10px] font-bold uppercase tracking-widest text-stone-400">通过率</p>
@@ -401,273 +635,212 @@ const submitApply = () => {
               :class="isMobileViewport ? 'max-w-none' : 'h-[90vh] w-full max-w-4xl'"
               :style="isMobileViewport ? mobileModalCardStyle : {}"
             >
-              <div class="relative shrink-0 overflow-hidden border-b border-stone-100/80 bg-gradient-to-br from-[#fffaf3] via-white to-[#f7f1e8] px-4 pb-4 pt-4 text-center sm:px-10 sm:pb-6 sm:pt-8 sm:text-left">
-
-                <button 
+              <div class="relative shrink-0 overflow-hidden border-b border-stone-100 bg-gradient-to-br from-[#fffaf3] via-[#fffdf7] to-[#f7f1e8] px-4 pb-4 pt-4 text-left sm:px-6 sm:pb-5 sm:pt-6">
+                <button
                   @click="showApplyModal = false"
-                  class="absolute right-3 top-3 z-20 flex h-10 w-10 items-center justify-center rounded-full border border-stone-100 bg-white/95 text-stone-400 shadow-md transition-all hover:text-stone-900 sm:right-4 sm:top-4"
+                  class="absolute right-3 top-3 z-20 flex h-9 w-9 items-center justify-center rounded-full border border-stone-100 bg-white text-stone-400 shadow-sm transition-all hover:text-stone-900"
                 >
                   <X class="h-5 w-5" />
                 </button>
 
-                <div class="relative z-10 mx-auto max-w-full space-y-3 sm:mx-0 sm:space-y-4">
-                  <div class="flex flex-wrap items-center gap-2">
-                    <span class="inline-flex items-center rounded-full bg-[#A37B24]/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-[#A37B24]">
-                      5步快速入驻
-                    </span>
-                    <span class="inline-flex items-center rounded-full border border-stone-200 bg-white/85 px-2.5 py-1 text-[10px] font-black text-stone-500">
-                      预计 3 分钟完成
-                    </span>
-                  </div>
-
-                  <div class="space-y-1.5">
-                    <h4 class="text-[2rem] font-black leading-[0.95] tracking-tight text-stone-900 sm:text-4xl">申请入驻摊位</h4>
-                    <p class="text-[10px] font-bold uppercase tracking-[0.22em] text-stone-400 opacity-70 sm:text-xs">Stall Onboarding Application</p>
-                  </div>
-
-                  <p class="pr-2 text-[13px] font-medium leading-relaxed text-stone-500 sm:max-w-xl sm:pr-0 sm:text-sm">
-                    选择经营位置、完成实名认证，并上传经营展示图，快速完成您的摊位入驻申请。
-                  </p>
-                </div>
-
-                <div class="relative z-10 mt-4 grid grid-cols-3 gap-2 sm:mt-6 sm:max-w-2xl sm:gap-3">
-                  <div
-                    v-for="item in [
-                      { label: '位置锁定', value: '推荐商圈', icon: MapPin, tone: 'bg-[#A37B24]/10 text-[#A37B24]' },
-                      { label: '证件核验', value: '2小时初审', icon: ShieldCheck, tone: 'bg-emerald-50 text-emerald-600' },
-                      { label: '经营展示', value: '支持方案图', icon: TrendingUp, tone: 'bg-orange-50 text-orange-500' }
-                    ]"
-                    :key="item.label"
-                    class="rounded-[1rem] border border-white/80 bg-white/85 p-2.5 shadow-sm shadow-stone-100/80 backdrop-blur-sm sm:rounded-[1.2rem] sm:p-3"
-                  >
-                    <div :class="['mx-auto mb-2 flex h-7 w-7 items-center justify-center rounded-[0.9rem] sm:mx-0 sm:h-9 sm:w-9 sm:rounded-xl', item.tone]">
-                      <component :is="item.icon" class="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                    </div>
-                    <p class="text-[8px] font-black uppercase tracking-[0.16em] text-stone-400 sm:text-[9px]">{{ item.label }}</p>
-                    <p class="mt-1 text-[11px] font-black leading-tight text-stone-900 sm:text-sm">{{ item.value }}</p>
-                  </div>
-                </div>
+                <h4 class="pr-10 text-[1.8rem] font-black leading-tight tracking-tight text-stone-900 sm:text-[2rem]">申请入驻摊位</h4>
+                <p class="mt-1 text-xs font-bold tracking-wide text-stone-400">填写基础信息，快速完成入驻</p>
               </div>
 
-              <div class="no-scrollbar flex-1 overflow-x-hidden overflow-y-auto px-4 pb-6 pt-4 text-center sm:px-10 sm:pb-10 sm:pt-6 sm:text-left">
-                <div class="space-y-5 sm:space-y-6">
-                  <div class="space-y-3">
-                    <div class="flex flex-col items-center gap-3 sm:flex-row sm:justify-between">
-                      <div class="flex items-center justify-center gap-3 sm:justify-start">
-                        <div class="flex h-6 w-6 items-center justify-center rounded-full bg-[#A37B24] text-[10px] font-black text-white">01</div>
-                        <div>
-                          <h5 class="text-sm font-black text-stone-900">选择摊位位置</h5>
-                          <p class="text-[10px] font-bold text-stone-400">优先选择推荐商圈，提升申请通过率</p>
-                        </div>
-                      </div>
-                      <span class="rounded-full bg-orange-50 px-2.5 py-1 text-[10px] font-black text-orange-500">AI 热荐</span>
+              <div class="no-scrollbar flex-1 overflow-x-hidden overflow-y-auto bg-[#fffdf8] px-4 pb-5 pt-4 sm:px-6">
+                <div class="space-y-4 text-left">
+                  <section class="rounded-2xl border border-amber-100/70 bg-white p-3">
+                    <div class="mb-2 flex items-center gap-2">
+                      <span class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-black text-white">01</span>
+                      <h5 class="text-sm font-black text-stone-900">摊位位置</h5>
                     </div>
-                    
-                    <div class="space-y-4 rounded-[1.6rem] border border-stone-100 bg-white p-3.5 shadow-[0_10px_28px_rgba(0,0,0,0.04)] sm:rounded-[2rem] sm:p-6">
-                      <div class="relative">
-                        <div class="absolute inset-y-0 left-4 flex items-center">
-                          <Search class="h-4 w-4 text-stone-300" />
-                        </div>
-                        <input 
-                          type="text" 
-                          placeholder="搜索地点或区域，如：文化广场、美食街..." 
-                          class="w-full rounded-2xl border border-stone-100 bg-stone-50 py-3.5 pl-12 pr-4 text-xs font-bold text-stone-700 outline-none transition-all ring-[#A37B24]/10 placeholder:text-stone-300 focus:ring-2 sm:py-4 sm:pl-14 sm:pr-6"
-                          @input="e => searchQuery = (e.target as HTMLInputElement).value"
+
+                    <div class="relative">
+                      <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-300" />
+                      <input
+                        type="text"
+                        placeholder="搜索地铁、商区、写字楼、商业入口"
+                        class="w-full rounded-xl border border-stone-200 bg-white py-2.5 pl-9 pr-3 text-xs font-semibold text-stone-700 outline-none focus:border-amber-300"
+                        @input="e => searchQuery = (e.target as HTMLInputElement).value"
+                      />
+                    </div>
+
+                    <div class="mt-3 flex flex-wrap gap-2">
+                      <button
+                        v-for="loc in mockLocations.filter(loc => !searchQuery || loc.name.includes(searchQuery))"
+                        :key="loc.name"
+                        @click="selectedAreaName = loc.name; selectedCoordinate = { latitude: loc.latitude, longitude: loc.longitude }"
+                        :class="['rounded-full border px-3 py-1.5 text-[11px] font-bold', selectedAreaName === loc.name ? 'border-amber-400 bg-amber-50 text-amber-700' : 'border-stone-200 bg-white text-stone-500']"
+                      >
+                        {{ loc.name }}
+                      </button>
+                    </div>
+
+                    <div class="mt-3 overflow-hidden rounded-xl border border-stone-200 bg-stone-50">
+                      <img
+                        src="https://images.unsplash.com/photo-1569336415962-a4bd9f69cd83?q=80&w=1200&auto=format&fit=crop"
+                        alt="map"
+                        class="h-28 w-full object-cover"
+                        referrerpolicy="no-referrer"
+                      />
+                    </div>
+                  </section>
+
+                  <section class="rounded-2xl border border-amber-100/70 bg-white p-3">
+                    <div class="mb-2 flex items-center gap-2">
+                      <span class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-black text-white">02</span>
+                      <h5 class="text-sm font-black text-stone-900">摊位名称</h5>
+                    </div>
+                    <input
+                      v-model="stallNameInput"
+                      maxlength="20"
+                      placeholder="请输入摊位名称（2-20个字）"
+                      class="w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm font-semibold text-stone-700 outline-none focus:border-amber-300"
+                    />
+                  </section>
+
+                  <section class="rounded-2xl border border-amber-100/70 bg-white p-3">
+                    <div class="mb-2 flex items-center gap-2">
+                      <span class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-black text-white">03</span>
+                      <h5 class="text-sm font-black text-stone-900">经营类目</h5>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                      <button
+                        v-for="item in categoryOptions"
+                        :key="item"
+                        type="button"
+                        @click="selectedCategoryName = item"
+                        :class="['rounded-xl border px-3 py-2 text-xs font-bold', selectedCategoryName === item ? 'border-amber-400 bg-amber-50 text-amber-700' : 'border-stone-200 bg-white text-stone-500']"
+                      >
+                        {{ item }}
+                      </button>
+                    </div>
+                  </section>
+
+                  <!--<section class="rounded-2xl border border-amber-100/70 bg-white p-3">
+                    <div class="mb-2 flex items-center gap-2">
+                      <span class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-black text-white">04</span>
+                      <h5 class="text-sm font-black text-stone-900">申请时间</h5>
+                    </div>
+
+                    <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <div class="rounded-xl border border-stone-200 bg-white p-2.5">
+                        <p class="mb-1 text-[10px] font-bold text-stone-400">开始时间</p>
+                        <input
+                          v-model="plannedStartTime"
+                          type="datetime-local"
+                          :min="minimumAllowedDateTimeInput"
+                          class="w-full rounded-lg border border-stone-200 px-2 py-2 text-xs font-semibold text-stone-700 outline-none focus:border-amber-300"
                         />
                       </div>
-
-                      <div class="relative h-40 overflow-hidden rounded-[1.35rem] border border-stone-100 bg-[#F5F1E9] sm:h-60 sm:rounded-[1.5rem]">
-                        <div class="absolute inset-0 opacity-[0.05]" style="background-image: linear-gradient(#A37B24 1px, transparent 1px), linear-gradient(90deg, #A37B24 1px, transparent 1px); background-size: 40px 40px;"></div>
-                        
-                        <div class="absolute left-[22%] top-[28%] cursor-pointer transition-transform hover:scale-110">
-                           <div class="rounded-lg border border-stone-200 bg-white/90 p-1.5 shadow-sm">
-                             <Store class="h-3 w-3 text-[#A37B24]/60" />
-                           </div>
-                        </div>
-                        <div class="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-2 px-3 text-center">
-                          <div class="flex items-center gap-2 rounded-full border border-white bg-white/95 px-3 py-1.5 shadow-xl backdrop-blur-md sm:px-4 sm:py-2">
-                            <span class="text-[10px] font-black text-stone-900">文化广场 · 默认区域</span>
-                          </div>
-                          <div class="relative">
-                            <MapPin class="h-8 w-8 fill-[#A37B24]/20 text-[#A37B24]" />
-                            <div class="absolute -bottom-1 left-1/2 h-0.5 w-2 -translate-x-1/2 rounded-full bg-black/10"></div>
-                          </div>
-                        </div>
-                        <button class="absolute right-3 top-3 flex items-center gap-1.5 rounded-xl border border-stone-100 bg-white px-2.5 py-1.5 shadow-sm transition-colors hover:bg-stone-50 sm:right-4 sm:top-4 sm:gap-2 sm:px-3 sm:py-2">
-                          <MapIcon class="h-3 w-3 text-[#A37B24]" />
-                          <span class="text-[8px] font-black text-stone-900 sm:text-[9px]">切换地图模式</span>
-                        </button>
-                      </div>
-
-                      <div class="flex flex-col gap-3 rounded-[1.25rem] border border-stone-100 bg-stone-50/80 p-3.5 sm:flex-row sm:items-center sm:justify-between sm:rounded-2xl sm:p-4">
-                        <div class="flex items-center gap-3">
-                          <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-[#A37B24] shadow-sm">
-                            <MapPin class="h-5 w-5" />
-                          </div>
-                          <div>
-                            <p class="text-[9px] font-bold uppercase tracking-[0.16em] text-stone-400">当前位置</p>
-                            <p class="text-sm font-black text-stone-900">文化广场 · 默认区域</p>
-                          </div>
-                        </div>
-                        <div class="flex flex-wrap items-center gap-2">
-                          <span class="rounded-full bg-white px-2.5 py-1 text-[10px] font-black text-stone-500 shadow-sm">步行 3 分钟</span>
-                          <span class="inline-flex items-center gap-1.5 rounded-full border border-[#A37B24]/10 bg-[#A37B24]/5 px-3 py-1.5 text-[10px] font-black text-[#A37B24]">
-                            可选 12 处
-                            <ChevronRight class="h-3 w-3" />
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5">
-                    <div class="space-y-3">
-                      <div class="flex items-center justify-center gap-3 sm:justify-start">
-                        <div class="flex h-6 w-6 items-center justify-center rounded-full bg-[#A37B24] text-[10px] font-black text-white">02</div>
-                        <div>
-                          <h5 class="text-sm font-black text-stone-900">经营类目</h5>
-                          <p class="text-[10px] font-bold text-stone-400">选择主营类目，匹配推荐点位</p>
-                        </div>
-                      </div>
-                      <div class="group flex cursor-pointer flex-col items-center gap-3 rounded-[1.4rem] border border-stone-100 bg-white p-4 text-center shadow-sm transition-all hover:border-[#A37B24]/30 sm:flex-row sm:justify-between sm:rounded-[1.7rem] sm:text-left">
-                        <div class="flex items-center justify-center gap-3.5 sm:justify-start">
-                          <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-[#A37B24]">
-                            <Store class="h-5 w-5" />
-                          </div>
-                          <div>
-                            <p class="text-sm font-black text-stone-900">创意手工</p>
-                            <p class="text-[10px] font-bold text-stone-400">适配文创夜市与手作展区</p>
-                          </div>
-                        </div>
-                        <ChevronRight class="h-4 w-4 text-stone-300 transition-colors group-hover:text-[#A37B24]" />
-                      </div>
-                    </div>
-
-                    <div class="space-y-3">
-                      <div class="flex items-center justify-center gap-3 sm:justify-start">
-                        <div class="flex h-6 w-6 items-center justify-center rounded-full bg-[#A37B24] text-[10px] font-black text-white">03</div>
-                        <div>
-                          <h5 class="text-sm font-black text-stone-900">申请时间</h5>
-                          <p class="text-[10px] font-bold text-stone-400">选择计划出摊时间，便于审核安排</p>
-                        </div>
-                      </div>
-                      <div class="group flex cursor-pointer flex-col items-center gap-3 rounded-[1.4rem] border border-stone-100 bg-white p-4 text-center shadow-sm transition-all hover:border-[#A37B24]/30 sm:flex-row sm:justify-between sm:rounded-[1.7rem] sm:text-left">
-                        <div class="flex items-center justify-center gap-3.5 sm:justify-start">
-                          <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-[#FAF7F2] text-[#A37B24]">
-                            <Clock class="h-5 w-5" />
-                          </div>
-                          <div>
-                            <p class="text-sm font-black text-stone-900">明日起出摊</p>
-                            <p class="text-[10px] font-bold text-stone-400">推荐从黄金时段前完成入场</p>
-                          </div>
-                        </div>
-                        <ChevronRight class="h-4 w-4 text-stone-300 transition-colors group-hover:text-[#A37B24]" />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div class="space-y-3">
-                    <div class="flex items-center justify-center gap-3 sm:justify-start">
-                      <div class="flex h-6 w-6 items-center justify-center rounded-full bg-[#A37B24] text-[10px] font-black text-white">04</div>
-                      <div>
-                        <h5 class="text-sm font-black text-stone-900">身份验证（证件上传）</h5>
-                        <p class="text-[10px] font-bold text-stone-400">实名认证信息仅用于审核，不会向第三方披露</p>
-                      </div>
-                    </div>
-                    <div class="rounded-[1.6rem] border border-stone-100 bg-white p-4 text-center shadow-sm sm:rounded-[2rem] sm:p-5 sm:text-left">
-                      <div class="flex flex-col items-center gap-3 sm:flex-row sm:items-start">
-                        <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-stone-50 text-stone-300 transition-colors hover:text-[#A37B24]">
-                          <Plus class="h-6 w-6" />
-                        </div>
-                        <div class="min-w-0 flex-1">
-                          <div class="flex items-start justify-between gap-3">
-                            <div>
-                              <p class="text-sm font-black text-stone-900">上传有效证件</p>
-                              <p class="mt-1 text-[10px] font-bold leading-relaxed text-stone-400">仅用于摊主实名认证，支持身份证、营业执照等材料</p>
-                            </div>
-                            <ChevronRight class="mt-1 h-4 w-4 shrink-0 text-stone-300" />
-                          </div>
-
-                          <div class="mt-3 grid grid-cols-2 gap-2">
-                            <div class="rounded-xl bg-stone-50 px-3 py-2">
-                              <p class="text-[9px] font-black uppercase tracking-[0.16em] text-stone-400">格式</p>
-                              <p class="mt-1 text-[11px] font-black text-stone-900">JPG / PNG / PDF</p>
-                            </div>
-                            <div class="rounded-xl bg-stone-50 px-3 py-2">
-                              <p class="text-[9px] font-black uppercase tracking-[0.16em] text-stone-400">审核</p>
-                              <p class="mt-1 text-[11px] font-black text-stone-900">2 小时内初审</p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div class="space-y-3">
-                    <div class="flex items-center justify-center gap-3 sm:justify-start">
-                      <div class="flex h-6 w-6 items-center justify-center rounded-full bg-[#A37B24] text-[10px] font-black text-white">05</div>
-                      <div>
-                        <h5 class="text-sm font-black text-stone-900">摊位展示（经营 / 设计图）</h5>
-                        <p class="text-[10px] font-bold text-stone-400">上传经营照片、效果图或设计草图，帮助更快完成审核</p>
-                      </div>
-                    </div>
-                    <div class="group relative overflow-hidden rounded-[1.75rem] border-2 border-dashed border-stone-200 bg-[#FAFAFA] p-5 transition-all hover:border-[#A37B24]/40 hover:bg-[#A37B24]/5 sm:rounded-[2.2rem] sm:p-8">
-                      <div class="relative z-10 flex flex-col items-center text-center">
-                        <div class="flex h-14 w-14 items-center justify-center rounded-full bg-white text-[#A37B24] shadow-md shadow-black/5 transition-transform group-hover:-translate-y-1 sm:h-16 sm:w-16">
-                          <TrendingUp class="h-7 w-7 sm:h-8 sm:w-8" />
-                        </div>
-                        <p class="mt-4 text-sm font-black text-stone-900">拍照或上传设计方案</p>
-                        <p class="mt-1 text-[10px] font-bold uppercase tracking-[0.16em] text-stone-400">支持 JPG、PNG、PDF 格式，单文件不超过 10MB</p>
-
-                        <div class="mt-4 flex flex-wrap items-center justify-center gap-2">
-                          <span class="rounded-full bg-white px-3 py-1 text-[10px] font-black text-stone-500 shadow-sm">门头照</span>
-                          <span class="rounded-full bg-white px-3 py-1 text-[10px] font-black text-stone-500 shadow-sm">经营图</span>
-                          <span class="rounded-full bg-white px-3 py-1 text-[10px] font-black text-stone-500 shadow-sm">设计草图</span>
-                        </div>
-                      </div>
-                      <div class="absolute -bottom-3 -right-2 h-24 w-24 opacity-15 sm:bottom-4 sm:right-4 sm:h-28 sm:w-28">
-                        <img 
-                          src="https://images.unsplash.com/photo-1544411047-c491e34a2465?q=80&w=200&auto=format&fit=crop" 
-                          alt="Design Plan" 
-                          class="h-full w-full object-contain"
+                      <div class="rounded-xl border border-stone-200 bg-white p-2.5">
+                        <p class="mb-1 text-[10px] font-bold text-stone-400">结束时间</p>
+                        <input
+                          v-model="plannedEndTime"
+                          type="datetime-local"
+                          :min="plannedStartTime || minimumAllowedDateTimeInput"
+                          class="w-full rounded-lg border border-stone-200 px-2 py-2 text-xs font-semibold text-stone-700 outline-none focus:border-amber-300"
                         />
                       </div>
                     </div>
-                  </div>
 
-                  <div class="rounded-[1.6rem] border border-stone-100 bg-white/95 p-4 shadow-[0_10px_28px_rgba(0,0,0,0.05)] sm:rounded-[2rem] sm:p-6">
-                    <div class="flex flex-col gap-4 sm:gap-5">
-                      <div v-if="isMobileViewport" class="space-y-2 text-center">
-                        <div class="flex flex-col items-center gap-2.5">
-                          <div class="mt-0.5 flex h-8 w-8 items-center justify-center rounded-full bg-[#A37B24]/10 text-[#A37B24]">
-                            <ShieldCheck class="h-4 w-4" />
-                          </div>
-                          <div>
-                            <p class="text-[11px] font-black text-stone-900">材料齐全后即可提交，平台将尽快审核</p>
-                            <p class="mt-1 text-[10px] font-bold leading-relaxed text-stone-400">
-                              提交即表示您已阅读并同意
-                              <span class="cursor-pointer text-[#A37B24] underline underline-offset-4 hover:text-stone-900">《用户服务协议》</span>
-                              和
-                              <span class="cursor-pointer text-[#A37B24] underline underline-offset-4 hover:text-stone-900">《隐私政策》</span>
-                            </p>
-                          </div>
-                        </div>
-                        <div class="inline-flex items-center gap-2 rounded-full bg-orange-50 px-3 py-1 text-[10px] font-black text-[#A37B24]">
-                          <Navigation class="h-3.5 w-3.5" />
-                          已覆盖位置、证件与展示图三项核心材料
-                        </div>
-                      </div>
+                    <p class="mt-2 text-[11px] font-bold text-amber-600">* 仅支持夜间时段（18:00-23:59），且开始时间需晚于当前6小时</p>
+                  </section>
 
-                      <div class="flex justify-center">
-                        <button 
-                          @click="submitApply"
-                          class="w-full rounded-[1.5rem] bg-[#A37B24] px-6 py-4 text-center text-base font-black text-white shadow-xl shadow-[#A37B24]/30 transition-all active:scale-95 sm:w-auto sm:min-w-[18rem]"
-                        >
-                          确认并提交申请
-                        </button>
-                      </div>
+                  <section class="rounded-2xl border border-amber-100/70 bg-white p-3">
+                    <div class="mb-2 flex items-center gap-2">
+                      <span class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-black text-white">05</span>
+                      <h5 class="text-sm font-black text-stone-900">摊位展示</h5>
                     </div>
-                  </div>
+
+                    <div class="rounded-xl border-2 border-dashed border-amber-200 bg-amber-50/30 p-3 text-center">
+                      <Plus class="mx-auto h-6 w-6 text-amber-500" />
+                      <p class="mt-1 text-xs font-black text-stone-700">上传图片</p>
+                      <p class="text-[10px] font-bold text-stone-400">支持 JPG / PNG / PDF，大小不超过 5MB</p>
+                    </div>
+
+                    <div class="mt-3 space-y-2">
+                      <input
+                        v-model="displayImageName"
+                        placeholder="展示图文件名"
+                        class="w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs font-semibold text-stone-700 outline-none focus:border-amber-300"
+                      />
+                      <textarea
+                        v-model="applicationNote"
+                        rows="2"
+                        placeholder="可补充摊位说明"
+                        class="w-full resize-none rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs font-semibold text-stone-700 outline-none focus:border-amber-300"
+                      />
+                    </div>
+                  </section>
+                  -->
+                  <section class="rounded-2xl border border-amber-100/70 bg-white p-3">
+  <div class="mb-2 flex items-center gap-2">
+    <span class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-black text-white">05</span>
+    <h5 class="text-sm font-black text-stone-900">摊位展示</h5>
+  </div>
+
+  <!-- 隐藏的真实文件输入框 -->
+  <input 
+    type="file" 
+    ref="fileInputRef" 
+    class="hidden" 
+    accept="image/*" 
+    @change="handleFileChange"
+  />
+
+  <!-- 上传点击区域 -->
+  <div 
+    @click="triggerUpload"
+    class="relative cursor-pointer overflow-hidden rounded-xl border-2 border-dashed transition-all hover:bg-amber-50/50"
+    :class="displayImageName.startsWith('http') ? 'border-emerald-200' : 'border-amber-200 bg-amber-50/30'"
+  >
+    <!-- 上传中状态 -->
+    <div v-if="isUploading" class="flex flex-col items-center py-6">
+      <div class="h-6 w-6 animate-spin rounded-full border-2 border-amber-500 border-t-transparent"></div>
+      <p class="mt-2 text-[10px] font-black text-stone-500">正在同步至云端...</p>
+    </div>
+
+    <!-- 已上传预览状态 -->
+    <div v-else-if="displayImageName.startsWith('http')" class="group relative aspect-video w-full">
+      <img :src="displayImageName" class="h-full w-full object-cover" />
+      <div class="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
+        <p class="text-xs font-black text-white">点击更换图片</p>
+      </div>
+    </div>
+
+    <!-- 默认待上传状态 -->
+    <div v-else class="p-4 text-center">
+      <Plus class="mx-auto h-6 w-6 text-amber-500" />
+      <p class="mt-1 text-xs font-black text-stone-700">点击上传经营展示图</p>
+      <p class="text-[10px] font-bold text-stone-400">支持 JPG / PNG，大小不超过 5MB</p>
+    </div>
+  </div>
+
+  <div class="mt-3 space-y-2">
+    <!-- 将此处的 v-model 绑定改为只读或隐藏，因为它现在存储的是长 URL -->
+    <input
+      :value="displayImageName"
+      readonly
+      placeholder="等待图片上传..."
+      class="w-full rounded-xl border border-stone-100 bg-stone-50/50 px-3 py-2 text-[10px] font-medium text-stone-400 outline-none"
+    />
+    <textarea
+      v-model="applicationNote"
+      rows="2"
+      placeholder="可补充摊位说明（如：主营特色、设备需求等）"
+      class="w-full resize-none rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs font-semibold text-stone-700 outline-none focus:border-amber-300"
+    />
+  </div>
+</section>
+
+                  <button
+                    @click="submitApply"
+                    :disabled="submittingApply"
+                    class="w-full rounded-xl bg-[#c8942f] px-4 py-3 text-sm font-black text-white shadow-md transition-all active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {{ submittingApply ? '提交中...' : '提交申请' }}
+                  </button>
                 </div>
               </div>
             </div>
@@ -675,5 +848,9 @@ const submitApply = () => {
         </Transition>
       </div>
     </Transition>
+
+    <p v-if="applyError" class="mx-2 rounded-xl bg-rose-50 px-3 py-2 text-xs font-bold text-rose-600 sm:mx-4">{{ applyError }}</p>
+    <p v-if="applySuccess" class="mx-2 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-600 sm:mx-4">{{ applySuccess }}</p>
   </div>
 </template>
+

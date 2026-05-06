@@ -1,9 +1,5 @@
 <script setup lang="ts">
 import {
-  ShoppingBag,
-  Users,
-  CircleDollarSign,
-  Sparkles,
   Search,
   Plus,
   X,
@@ -12,122 +8,251 @@ import {
   ArrowDown,
   ChevronRight,
   Settings,
-  BarChart4
+  BarChart4,
+  UploadCloud,
+  Send
 } from 'lucide-vue-next';
-import { ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import lemonTeaImage from '../assets/lemon-tea.svg';
 import spicyCutletImage from '../assets/spicy-cutlet.svg';
 import skewerPlatterImage from '../assets/skewer-platter.svg';
 import doubleSkinMilkImage from '../assets/double-skin-milk.svg';
 import iceJellyImage from '../assets/ice-jelly.svg';
+import { buildApiUrl } from '../utils/api';
 
-const emit = defineEmits(['back']);
+const emit = defineEmits<{
+  (e: 'back'): void;
+  (e: 'view-change', view: 'manualOrder'): void;
+}>();
+
+interface ApiResponse<T> {
+  success: boolean;
+  message?: string;
+  data?: T;
+}
+
+interface ProductCategory {
+  name: string;
+  count: number;
+}
+
+interface ProductItem {
+  id: number;
+  name: string;
+  tag: string;
+  type: string;
+  price: number;
+  stock: number;
+  monthlySales: number;
+  trend: string;
+  visitors: string;
+  visitorTrend: string;
+  revenue: string;
+  revenueTrend: string;
+  ctr: string;
+  ctrTrend: string;
+  imageUrl?: string | null;
+}
+
+interface ProductSummaryResponse {
+  categories: ProductCategory[];
+  products: ProductItem[];
+}
+
 const activeCategory = ref('全部商品');
 const searchQuery = ref('');
+const showAddProductModal = ref(false);
 
-const productStats = [
-  { label: '商品总数', value: '64', trend: '+ 6', icon: ShoppingBag, color: 'text-orange-500', bg: 'bg-orange-50' },
-  { label: '热销商品', value: '12', trend: '占比 18.8%', icon: Sparkles, color: 'text-indigo-500', bg: 'bg-indigo-50' },
-  { label: '商品访客数', value: '3.2k', trend: '+ 15.6%', icon: Users, color: 'text-blue-500', bg: 'bg-blue-50' },
-  { label: '商品成交额', value: '¥8,560', trend: '+ 8.2%', icon: CircleDollarSign, color: 'text-emerald-500', bg: 'bg-emerald-50' },
-];
+const newProductName = ref('');
+const newProductType = ref('其他');
+const newProductPrice = ref<number | null>(null);
+const newProductStock = ref<number | null>(null);
+const newProductDescription = ref('');
+const newProductImagePreviews = ref<string[]>([]);
+const imagePickerRef = ref<HTMLInputElement | null>(null);
+const productFormError = ref('');
 
-const categories = [
-  { name: '全部商品', count: 64 },
-  { name: '热销商品', count: 12 },
-  { name: '新品', count: 8 },
-  { name: '饮品', count: 28 },
-  { name: '小吃', count: 20 },
-  { name: '其他', count: 8 },
-];
+const productTypeOptions = ['其他', '小吃', '饮品', '甜品', '手工饰品'];
+const descriptionLength = computed(() => newProductDescription.value.length);
 
-const tableProducts = [
-  { 
-    id: 1, 
-    name: '柠檬冰茶', 
-    tag: '热销', 
-    type: '饮品', 
-    price: 18, 
-    stock: 45, 
-    monthlySales: 856, 
-    trend: '+ 12%', 
-    visitors: '1.2k', 
-    vTrend: '+ 18%', 
-    revenue: '2,480', 
-    rTrend: '+ 15%', 
-    ctr: '28.9%', 
-    cTrend: '+ 5%', 
-    img: lemonTeaImage 
-  },
-  { 
-    id: 2, 
-    name: '香辣鸡排', 
-    tag: '热销', 
-    type: '小吃', 
-    price: 22, 
-    stock: 32, 
-    monthlySales: 642, 
-    trend: '+ 8%', 
-    visitors: '980', 
-    vTrend: '+ 12%', 
-    revenue: '1,860', 
-    rTrend: '+ 10%', 
-    ctr: '28.9%', 
-    cTrend: '+ 4%', 
-    img: spicyCutletImage 
-  },
-  { 
-    id: 3, 
-    name: '烤串组合', 
-    tag: '热销', 
-    type: '小吃', 
-    price: 28, 
-    stock: 28, 
-    monthlySales: 523, 
-    trend: '+ 5%', 
-    visitors: '860', 
-    vTrend: '+ 6%', 
-    revenue: '1,420', 
-    rTrend: '+ 8%', 
-    ctr: '27.2%', 
-    cTrend: '+ 3%', 
-    img: skewerPlatterImage 
-  },
-  { 
-    id: 4, 
-    name: '双皮奶', 
-    tag: '新品', 
-    type: '甜品', 
-    price: 16, 
-    stock: 50, 
-    monthlySales: 412, 
-    trend: '+ 10%', 
-    visitors: '720', 
-    vTrend: '+ 9%', 
-    revenue: '960', 
-    rTrend: '+ 7%', 
-    ctr: '23.3%', 
-    cTrend: '+ 2%', 
-    img: doubleSkinMilkImage 
-  },
-  { 
-    id: 5, 
-    name: '杨梅冰粉', 
-    tag: '新品', 
-    type: '饮品', 
-    price: 15, 
-    stock: 40, 
-    monthlySales: 387, 
-    trend: '- 3%', 
-    visitors: '680', 
-    vTrend: '- 2%', 
-    revenue: '780', 
-    rTrend: '- 1%', 
-    ctr: '20.2%', 
-    cTrend: '- 1%', 
-    img: iceJellyImage 
-  },
-];
+const categories = ref<ProductCategory[]>([{ name: '全部商品', count: 0 }]);
+const tableProducts = ref<Array<{
+  id: number;
+  name: string;
+  tag: string;
+  type: string;
+  price: number;
+  stock: number;
+  monthlySales: number;
+  trend: string;
+  visitors: string;
+  vTrend: string;
+  revenue: string;
+  rTrend: string;
+  ctr: string;
+  cTrend: string;
+  img: string;
+}>>([]);
+
+const mockImages = [lemonTeaImage, spicyCutletImage, skewerPlatterImage, doubleSkinMilkImage, iceJellyImage];
+
+const authHeaders = () => {
+  const token = localStorage.getItem('stall_auth_token') || '';
+  return {
+    Authorization: `Bearer ${token}`,
+    'Content-Type': 'application/json'
+  };
+};
+
+const normalizeProduct = (item: ProductItem, idx: number) => ({
+  id: item.id,
+  name: item.name,
+  tag: item.tag || '常规',
+  type: item.type || '其他',
+  price: item.price || 0,
+  stock: item.stock || 0,
+  monthlySales: item.monthlySales || 0,
+  trend: item.trend || '+ 0%',
+  visitors: item.visitors || '--',
+  vTrend: item.visitorTrend || '--',
+  revenue: item.revenue || '0',
+  rTrend: item.revenueTrend || '--',
+  ctr: item.ctr || '--',
+  cTrend: item.ctrTrend || '--',
+  img: mockImages[idx % mockImages.length]
+});
+
+const fetchSummary = async () => {
+  try {
+    const resp = await fetch(buildApiUrl('/api/products/summary'), {
+      headers: authHeaders()
+    });
+    const payload = (await resp.json()) as ApiResponse<ProductSummaryResponse>;
+    if (!resp.ok || !payload.success || !payload.data) {
+      return;
+    }
+
+    categories.value = payload.data.categories?.length
+      ? payload.data.categories
+      : [{ name: '全部商品', count: payload.data.products?.length || 0 }];
+
+    tableProducts.value = (payload.data.products || []).map(normalizeProduct);
+  } catch {
+    // ignore and keep current UI
+  }
+};
+
+const filteredProducts = computed(() => {
+  const keyword = searchQuery.value.trim();
+  return tableProducts.value.filter((item) => {
+    const inCategory =
+      activeCategory.value === '全部商品' ||
+      activeCategory.value === '全部' ||
+      item.type === activeCategory.value ||
+      item.tag === activeCategory.value;
+
+    const inKeyword = !keyword || item.name.includes(keyword);
+    return inCategory && inKeyword;
+  });
+});
+
+const revokeProductPreviews = () => {
+  newProductImagePreviews.value.forEach((url) => {
+    if (url.startsWith('blob:')) {
+      URL.revokeObjectURL(url);
+    }
+  });
+};
+
+const resetAddProductForm = () => {
+  revokeProductPreviews();
+  newProductName.value = '';
+  newProductType.value = '其他';
+  newProductPrice.value = null;
+  newProductStock.value = null;
+  newProductDescription.value = '';
+  newProductImagePreviews.value = [];
+  productFormError.value = '';
+  if (imagePickerRef.value) {
+    imagePickerRef.value.value = '';
+  }
+};
+
+const triggerImagePicker = () => {
+  imagePickerRef.value?.click();
+};
+
+const onPickProductImage = (event: Event) => {
+  const input = event.target as HTMLInputElement | null;
+  const files = input?.files ? Array.from(input.files).slice(0, 4) : [];
+  revokeProductPreviews();
+  newProductImagePreviews.value = files.map((file) => URL.createObjectURL(file));
+};
+
+const openAddProductModal = () => {
+  resetAddProductForm();
+  showAddProductModal.value = true;
+};
+
+const closeAddProductModal = () => {
+  showAddProductModal.value = false;
+  resetAddProductForm();
+};
+
+const submitAddProduct = async () => {
+  const name = newProductName.value.trim();
+  const type = newProductType.value.trim() || '其他';
+  const price = Number(newProductPrice.value || 0);
+  const stock = Number(newProductStock.value || 0);
+
+  if (!name) {
+    productFormError.value = '请输入商品名称';
+    return;
+  }
+  if (price <= 0) {
+    productFormError.value = '请输入有效商品价格';
+    return;
+  }
+  if (stock < 0) {
+    productFormError.value = '库存数量不能小于 0';
+    return;
+  }
+
+  productFormError.value = '';
+
+  try {
+    const resp = await fetch(buildApiUrl('/api/products'), {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({
+        name,
+        type,
+        price: Math.round(price),
+        stock,
+        description: newProductDescription.value.trim() || null
+      })
+    });
+
+    const payload = (await resp.json()) as ApiResponse<unknown>;
+    if (!resp.ok || !payload.success) {
+      productFormError.value = payload.message || '上架失败，请稍后重试';
+      return;
+    }
+
+    closeAddProductModal();
+    await fetchSummary();
+  } catch {
+    productFormError.value = '网络异常，请稍后重试';
+  }
+};
+
+onMounted(async () => {
+  await fetchSummary();
+});
+
+onBeforeUnmount(() => {
+  revokeProductPreviews();
+});
 </script>
 
 <template>
@@ -145,12 +270,27 @@ const tableProducts = [
           </div>
         </div>
 
-        <button class="flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-full bg-[#FF6B00] px-3.5 text-[11px] font-black text-white shadow-lg shadow-orange-100 transition-colors hover:bg-orange-600 md:hidden">
-          <Plus class="h-3.5 w-3.5" /> 上架商品
-        </button>
+        <div class="flex shrink-0 items-center gap-2 md:hidden">
+          <button
+            @click="emit('view-change', 'manualOrder')"
+            class="flex h-9 items-center justify-center gap-1.5 rounded-full bg-stone-900 px-3.5 text-[11px] font-black text-white shadow-lg shadow-stone-200 transition-colors hover:bg-stone-700"
+          >
+            手动点单
+          </button>
+          <button @click="openAddProductModal" class="flex h-9 items-center justify-center gap-1.5 rounded-full bg-[#FF6B00] px-3.5 text-[11px] font-black text-white shadow-lg shadow-orange-100 transition-colors hover:bg-orange-600">
+            <Plus class="h-3.5 w-3.5" /> 上架商品
+          </button>
+        </div>
+
       </div>
 
       <div class="grid grid-cols-1 gap-2 sm:gap-3 md:flex md:w-auto md:items-center">
+        <button
+          @click="emit('view-change', 'manualOrder')"
+          class="hidden items-center justify-center gap-2 rounded-2xl bg-[#FF6B00] px-5 py-3 text-sm font-black text-white shadow-xl shadow-orange-100 transition-colors hover:bg-orange-600 md:flex md:px-6"
+        >
+          手动点单
+        </button>
         <div class="relative md:w-72">
           <input
             type="text"
@@ -160,48 +300,13 @@ const tableProducts = [
           />
           <Search class="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-300" />
         </div>
-        <button class="hidden items-center justify-center gap-2.5 rounded-2xl bg-[#FF6B00] px-5 py-3 text-sm font-black text-white shadow-xl shadow-orange-100 transition-colors hover:bg-orange-600 md:flex md:px-6">
+        <button @click="openAddProductModal" class="hidden items-center justify-center gap-2.5 rounded-2xl bg-[#FF6B00] px-5 py-3 text-sm font-black text-white shadow-xl shadow-orange-100 transition-colors hover:bg-orange-600 md:flex md:px-6">
           <Plus class="h-4 w-4" /> 上架商品
         </button>
       </div>
     </div>
 
-    <!-- KPI 数据栏 -->
-    <div class="grid grid-cols-4 gap-1.5 sm:grid-cols-2 sm:gap-4 lg:grid-cols-4">
-      <div v-for="(stat, i) in productStats" :key="i" class="group relative overflow-hidden rounded-[0.95rem] border border-stone-50 bg-white p-2 shadow-[0_15px_36px_rgba(0,0,0,0.02)] transition-all hover:border-orange-100 sm:min-w-0 sm:min-h-[9.5rem] sm:rounded-[2rem] sm:p-5">
-        <div class="flex h-full min-h-[4.8rem] flex-col justify-start gap-1.5 sm:min-h-0 sm:justify-between sm:gap-0">
-          <div class="flex items-start justify-between gap-1">
-            <div :class="['flex h-6 w-6 items-center justify-center rounded-[0.75rem] shadow-inner transition-transform group-hover:scale-105 sm:h-11 sm:w-11 sm:rounded-2xl', stat.bg, stat.color]">
-              <component :is="stat.icon" class="h-3 w-3 sm:h-6 sm:w-6" />
-            </div>
-            <p :class="['flex items-center gap-0.5 text-[6px] font-black leading-none sm:gap-1 sm:text-[9px]', stat.trend.includes('+') ? 'text-emerald-500' : 'text-stone-400']">
-              <ArrowUp v-if="stat.trend.includes('+')" class="h-1.5 w-1.5 sm:h-2.5 sm:w-2.5" />
-              {{ stat.trend }}
-            </p>
-          </div>
-          <div class="space-y-0 text-left">
-            <p class="text-[7px] font-bold uppercase tracking-tight leading-tight text-stone-300 sm:text-[10px]">{{ stat.label }}</p>
-            <h3 class="text-[0.9rem] font-black leading-none tracking-tighter text-stone-900 sm:text-2xl">{{ stat.value }}</h3>
-          </div>
-        </div>
-      </div>
-    </div>
 
-    <!-- 经营建议栏 -->
-    <div class="flex flex-col gap-2.5 rounded-[1.45rem] border border-amber-100/40 bg-amber-50/60 p-3.5 text-left sm:rounded-[2.2rem] sm:p-5 md:flex-row md:items-center md:justify-between">
-      <div class="flex items-start gap-3 sm:gap-4">
-        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-[1rem] bg-white text-amber-500 shadow-sm sm:h-10 sm:w-10 sm:rounded-2xl">
-          <Sparkles class="h-4.5 w-4.5 sm:h-5 sm:w-5" />
-        </div>
-        <p class="text-[13px] font-black leading-snug text-stone-700 sm:text-sm">
-          <span class="mr-2 text-orange-500">经营建议</span>
-          下午 15:00-17:00 转化率较低，建议推出下午茶优惠套餐提升转化率！
-        </p>
-      </div>
-      <button class="flex items-center gap-1.5 text-[11px] font-black text-orange-500 transition-all hover:opacity-70 whitespace-nowrap sm:text-xs">
-        查看详情 <ChevronRight class="h-4 w-4" />
-      </button>
-    </div>
 
     <!-- 筛选与排序 -->
     <div class="flex flex-col gap-3 px-1 md:flex-row md:items-center md:justify-between">
@@ -222,7 +327,8 @@ const tableProducts = [
 
     <!-- 手机端商品卡片 -->
     <div class="space-y-2.5 md:hidden">
-      <article v-for="(p, idx) in tableProducts" :key="p.id" class="rounded-[1.45rem] border border-stone-100 bg-white p-3 shadow-[0_12px_30px_rgba(0,0,0,0.03)]">
+      <article v-for="(p, idx) in filteredProducts" :key="p.id" class="rounded-[1.45rem] border border-stone-100 bg-white p-3 shadow-[0_12px_30px_rgba(0,0,0,0.03)]">
+
         <div class="flex items-start gap-3">
           <div class="relative shrink-0">
             <div class="h-14 w-14 overflow-hidden rounded-[1rem] border border-stone-50">
@@ -309,7 +415,7 @@ const tableProducts = [
       </article>
 
       <div class="flex items-center justify-between rounded-[1.5rem] border border-stone-100 bg-stone-50/60 px-4 py-3">
-        <p class="text-[10px] font-bold uppercase tracking-widest text-stone-300">共 64 条商品</p>
+        <p class="text-[10px] font-bold uppercase tracking-widest text-stone-300">共 {{ filteredProducts.length }} 条商品</p>
         <div class="flex items-center gap-1 text-[10px] font-black text-stone-400">
           10 条/页 <ChevronRight class="h-3 w-3 rotate-90" />
         </div>
@@ -331,7 +437,8 @@ const tableProducts = [
             </tr>
           </thead>
           <tbody class="divide-y divide-stone-50">
-            <tr v-for="(p, idx) in tableProducts" :key="p.id" class="group transition-colors hover:bg-stone-50/50">
+            <tr v-for="(p, idx) in filteredProducts" :key="p.id" class="group transition-colors hover:bg-stone-50/50">
+
               <td class="py-6 pl-10">
                 <div class="flex items-center gap-4">
                   <div class="relative shrink-0">
@@ -405,7 +512,7 @@ const tableProducts = [
       </div>
 
       <div class="flex items-center justify-between border-t border-stone-100 p-8">
-        <p class="text-[10px] font-bold uppercase tracking-widest leading-none text-stone-300">共 64 条商品</p>
+        <p class="text-[10px] font-bold uppercase tracking-widest leading-none text-stone-300">共 {{ filteredProducts.length }} 条商品</p>
         <div class="flex items-center gap-2">
           <button
             v-for="(num, i) in [1, 2, 3, 4, 5, '...', 13]"
@@ -417,6 +524,153 @@ const tableProducts = [
           <div class="ml-4 flex cursor-pointer items-center gap-2 rounded-xl bg-stone-50 px-4 py-1.5 text-[10px] font-black text-stone-400">
             10 条/页 <ChevronRight class="h-3 w-3 rotate-90" />
           </div>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="showAddProductModal" class="fixed inset-0 z-[120] flex items-center justify-center bg-black/35 p-3 sm:p-6">
+      <div class="w-full max-w-5xl overflow-hidden rounded-[2rem] bg-white shadow-2xl">
+        <div class="flex items-start justify-between border-b border-stone-100 px-5 py-4 sm:px-8 sm:py-6">
+          <div class="flex items-start gap-3">
+            <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-orange-50 text-orange-500">
+              <Plus class="h-5 w-5" />
+            </div>
+            <div>
+              <h3 class="text-xl font-black text-stone-900">上架商品</h3>
+              <p class="mt-1 text-xs font-semibold text-stone-400">添加新品，吸引更多顾客</p>
+            </div>
+          </div>
+          <button @click="closeAddProductModal" class="rounded-xl border border-stone-200 bg-white p-2 text-stone-400 transition-colors hover:text-stone-700">
+            <X class="h-4 w-4" />
+          </button>
+        </div>
+
+        <div class="max-h-[68vh] space-y-3 overflow-y-auto px-3.5 py-3 sm:max-h-[72vh] sm:space-y-4 sm:px-6 sm:py-5">
+          <section>
+            <div class="mb-2 flex items-center gap-1 text-sm font-black text-stone-900">
+              商品图片 <span class="text-orange-500">*</span>
+              <span class="ml-2 text-[11px] font-semibold text-stone-400">上传清晰美观的图片，建议尺寸 800*800px</span>
+            </div>
+
+            <button
+              type="button"
+              @click="triggerImagePicker"
+              class="flex h-28 w-full flex-col items-center justify-center rounded-xl border border-dashed border-orange-200 bg-orange-50/20 text-stone-500 transition-all hover:bg-orange-50/40 sm:h-40 sm:rounded-2xl"
+            >
+              <UploadCloud class="h-11 w-11 text-orange-500" />
+              <p class="mt-3 text-lg font-black text-stone-900">点击上传商品图片</p>
+              <p class="mt-2 text-xs font-semibold text-stone-400">支持 JPG / PNG 格式，大小不超过 5MB</p>
+            </button>
+            <input
+              ref="imagePickerRef"
+              type="file"
+              accept="image/png,image/jpeg"
+              multiple
+              class="hidden"
+              @change="onPickProductImage"
+            />
+
+            <div class="mt-4 rounded-2xl border border-stone-100 bg-stone-50/40 p-3">
+              <p class="mb-2 text-xs font-bold text-stone-500">图片预览</p>
+              <div class="grid grid-cols-4 gap-2">
+                <div
+                  v-for="index in 4"
+                  :key="index"
+                  class="aspect-square overflow-hidden rounded-xl border border-stone-200 bg-white"
+                >
+                  <img
+                    v-if="newProductImagePreviews[index - 1]"
+                    :src="newProductImagePreviews[index - 1]"
+                    alt="preview"
+                    class="h-full w-full object-cover"
+                  />
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="space-y-3.5">
+            <div>
+              <label class="mb-1.5 block text-sm font-black text-stone-900">商品名称 <span class="text-orange-500">*</span></label>
+              <input
+                v-model="newProductName"
+                type="text"
+                placeholder="请输入商品名称"
+                class="w-full rounded-2xl border border-stone-200 px-4 py-2.5 text-sm font-semibold text-stone-700 outline-none focus:border-orange-300"
+              />
+            </div>
+
+            <div>
+              <label class="mb-1.5 block text-sm font-black text-stone-900">商品分类 <span class="text-orange-500">*</span></label>
+              <select
+                v-model="newProductType"
+                class="w-full rounded-2xl border border-stone-200 bg-white px-4 py-2.5 text-sm font-semibold text-stone-700 outline-none focus:border-orange-300"
+              >
+                <option v-for="option in productTypeOptions" :key="option" :value="option">{{ option }}</option>
+              </select>
+            </div>
+
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label class="mb-1.5 block text-sm font-black text-stone-900">商品单价 <span class="text-orange-500">*</span></label>
+                <div class="flex items-center rounded-2xl border border-stone-200 px-3.5">
+                  <span class="text-sm font-black text-stone-500">¥</span>
+                  <input
+                    v-model.number="newProductPrice"
+                    type="number"
+                    min="1"
+                    step="1"
+                    placeholder="请输入价格"
+                    class="w-full bg-transparent px-2 py-2.5 text-sm font-semibold text-stone-700 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label class="mb-1.5 block text-sm font-black text-stone-900">库存数量 <span class="text-orange-500">*</span></label>
+                <div class="flex items-center rounded-2xl border border-stone-200 px-3.5">
+                  <input
+                    v-model.number="newProductStock"
+                    type="number"
+                    min="0"
+                    step="1"
+                    placeholder="请输入库存数量"
+                    class="w-full bg-transparent py-2.5 text-sm font-semibold text-stone-700 outline-none"
+                  />
+                  <span class="rounded-lg bg-stone-100 px-2 py-1 text-xs font-bold text-stone-500">份</span>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label class="mb-1.5 block text-sm font-black text-stone-900">商品描述</label>
+              <textarea
+                v-model="newProductDescription"
+                rows="4"
+                maxlength="200"
+                placeholder="请简单描述商品的特点、口味、规格等信息..."
+                class="w-full resize-none rounded-2xl border border-stone-200 px-4 py-3 text-sm font-semibold text-stone-700 outline-none focus:border-orange-300"
+              />
+              <p class="mt-1 text-right text-xs font-semibold text-stone-400">{{ descriptionLength }}/200</p>
+            </div>
+
+            <p v-if="productFormError" class="rounded-xl bg-rose-50 px-3 py-2 text-xs font-bold text-rose-600">{{ productFormError }}</p>
+          </section>
+        </div>
+
+        <div class="flex items-center justify-end gap-3 border-t border-stone-100 px-5 py-4 sm:px-8 sm:py-5">
+          <button
+            @click="closeAddProductModal"
+            class="w-full rounded-full border border-stone-200 bg-white px-5 py-2 text-sm font-bold text-stone-500 transition-colors hover:bg-stone-50 sm:w-auto sm:px-8 sm:py-2.5"
+          >
+            取消
+          </button>
+          <button
+            @click="submitAddProduct"
+            class="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#FF6B00] px-5 py-2 text-sm font-black text-white shadow-lg shadow-orange-100 transition-colors hover:bg-orange-600 sm:w-auto sm:px-8 sm:py-2.5"
+          >
+            <Send class="h-4 w-4" /> 确认上架
+          </button>
         </div>
       </div>
     </div>

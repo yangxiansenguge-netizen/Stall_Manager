@@ -8,7 +8,9 @@ import StallScreen from './screens/StallScreen.vue';
 import BusinessScreen from './screens/BusinessScreen.vue';
 import SettingsScreen from './screens/SettingsScreen.vue';
 import MessageScreen from './screens/MessageScreen.vue';
+import { buildApiUrl } from './utils/api';
 import { Tab } from './types';
+
 
 interface AuthSession {
   token: string;
@@ -30,12 +32,12 @@ interface ApiResponse<T> {
 
 const AUTH_TOKEN_KEY = 'stall_auth_token';
 const AUTH_SESSION_KEY = 'stall_auth_session';
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '').trim();
+
 
 const isLoggedIn = ref(false);
 const isAuthLoading = ref(true);
 const activeTab = ref<Tab>('home');
-const businessSubView = ref<'main' | 'products' | 'advanced'>('main');
+const businessSubView = ref<'main' | 'products' | 'manualOrder' | 'advanced'>('main');
 const authSession = ref<AuthSession | null>(null);
 
 const merchantName = computed(() => authSession.value?.merchantName ?? '');
@@ -51,7 +53,8 @@ const clearAuth = () => {
 };
 
 const requestProfile = async (token: string): Promise<AuthSession> => {
-  const response = await fetch(`${API_BASE_URL}/api/auth/profile`, {
+  const response = await fetch(buildApiUrl('/api/auth/profile'), {
+
     headers: {
       Authorization: `Bearer ${token}`
     }
@@ -102,7 +105,7 @@ const onTabChange = (tab: Tab) => {
   activeTab.value = tab;
 };
 
-const navigateToBusiness = (subView: 'main' | 'products' | 'advanced' = 'main') => {
+const navigateToBusiness = (subView: 'main' | 'products' | 'manualOrder' | 'advanced' = 'main') => {
   activeTab.value = 'business';
   businessSubView.value = subView;
 };
@@ -134,7 +137,7 @@ const navigateToStall = () => {
             :merchant-name="merchantName"
             @navigate-to-management="navigateToBusiness('main')"
             @navigate-to-stall-management="navigateToStall"
-            @navigate-to-plan="navigateToStall"
+            @navigate-to-plan="navigateToBusiness('manualOrder')"
             @navigate-to-add-product="navigateToBusiness('products')"
           />
           <StallScreen v-else-if="activeTab === 'stall'" />

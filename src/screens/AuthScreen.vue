@@ -11,7 +11,9 @@ import {
   EyeOff
 } from 'lucide-vue-next';
 import AgreementModal from '../components/AgreementModal.vue';
+import { buildApiUrl } from '../utils/api';
 import backgroundVideo from '../../烟火气.mp4';
+
 
 type LoginMode = 'code' | 'password';
 
@@ -35,7 +37,7 @@ interface ApiResponse<T> {
 
 const AUTH_TOKEN_KEY = 'stall_auth_token';
 const AUTH_SESSION_KEY = 'stall_auth_session';
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '').trim();
+
 
 const emit = defineEmits<{
   (event: 'login', payload: AuthSession): void;
@@ -85,7 +87,8 @@ const fillRegisterSmsCode = () => {
 };
 
 const requestAuth = async <T,>(path: string, body?: unknown, token?: string): Promise<T> => {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetch(buildApiUrl(path), {
+
     method: body ? 'POST' : 'GET',
     headers: {
       'Content-Type': 'application/json',
