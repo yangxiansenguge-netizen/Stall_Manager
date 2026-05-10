@@ -19,6 +19,18 @@ import skewerPlatterImage from '../assets/skewer-platter.svg';
 import doubleSkinMilkImage from '../assets/double-skin-milk.svg';
 import iceJellyImage from '../assets/ice-jelly.svg';
 import { buildApiUrl } from '../utils/api';
+import { showToast } from '../composables/useToast';
+
+const resolveImageUrl = (raw?: string | null): string => {
+  if (!raw) return '';
+  try {
+    const arr = JSON.parse(raw);
+    if (Array.isArray(arr) && arr.length > 0) return arr[0];
+  } catch {
+    if (raw.startsWith('http')) return raw;
+  }
+  return '';
+};
 
 const emit = defineEmits<{
   (e: 'back'): void;
@@ -69,10 +81,18 @@ const newProductPrice = ref<number | null>(null);
 const newProductStock = ref<number | null>(null);
 const newProductDescription = ref('');
 const newProductImagePreviews = ref<string[]>([]);
+const uploadedImageUrls = ref<string[]>([]);
+const uploadingIndex = ref<number | null>(null);
 const imagePickerRef = ref<HTMLInputElement | null>(null);
-const productFormError = ref('');
 
-const productTypeOptions = ['其他', '小吃', '饮品', '甜品', '手工饰品'];
+const isCombo = computed(() => uploadedImageUrls.value.length >= 2);
+
+const productTypeOptions = computed(() => {
+  const names = categories.value
+    .filter(c => c.name !== '全部商品' && c.name !== '热销商品')
+    .map(c => c.name);
+  return names.length > 0 ? names : ['其他', '小吃', '饮品', '甜品', '手工饰品'];
+});
 const descriptionLength = computed(() => newProductDescription.value.length);
 
 const categories = ref<ProductCategory[]>([{ name: '全部商品', count: 0 }]);
@@ -119,7 +139,7 @@ const normalizeProduct = (item: ProductItem, idx: number) => ({
   rTrend: item.revenueTrend || '--',
   ctr: item.ctr || '--',
   cTrend: item.ctrTrend || '--',
-  img: mockImages[idx % mockImages.length]
+  img: resolveImageUrl(item.imageUrl) || mockImages[idx % mockImages.length]
 });
 
 const fetchSummary = async () => {
@@ -172,21 +192,79 @@ const resetAddProductForm = () => {
   newProductStock.value = null;
   newProductDescription.value = '';
   newProductImagePreviews.value = [];
-  productFormError.value = '';
+  uploadedImageUrls.value = [];
+  uploadingIndex.value = null;
   if (imagePickerRef.value) {
     imagePickerRef.value.value = '';
   }
 };
 
-const triggerImagePicker = () => {
+const triggerImagePicker = (index?: number) => {
+  uploadingIndex.value = index ?? newProductImagePreviews.value.length;
   imagePickerRef.value?.click();
 };
 
-const onPickProductImage = (event: Event) => {
+const onPickProductImage = async (event: Event) => {
   const input = event.target as HTMLInputElement | null;
-  const files = input?.files ? Array.from(input.files).slice(0, 4) : [];
-  revokeProductPreviews();
-  newProductImagePreviews.value = files.map((file) => URL.createObjectURL(file));
+  const file = input?.files?.[0];
+  if (!file) return;
+
+  if (file.size > 5 * 1024 * 1024) {
+    showToast('error', '上传失败', '图片大小不能超过 5MB');
+    return;
+  }
+
+  // 本地预览
+  const previewUrl = URL.createObjectURL(file);
+  const idx = uploadingIndex.value ?? newProductImagePreviews.value.length;
+  if (idx >= newProductImagePreviews.value.length) {
+    newProductImagePreviews.value.push(previewUrl);
+  } else {
+    if (newProductImagePreviews.value[idx]?.startsWith('blob:')) {
+      URL.revokeObjectURL(newProductImagePreviews.value[idx]);
+    }
+    newProductImagePreviews.value[idx] = previewUrl;
+  }
+
+  // 上传到 OSS
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const token = localStorage.getItem('stall_auth_token') || '';
+    const resp = await fetch(buildApiUrl('/api/common/upload'), {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
+    const result = await resp.json();
+    if (result.code === 200 || result.success) {
+      if (idx >= uploadedImageUrls.value.length) {
+        uploadedImageUrls.value.push(result.data);
+      } else {
+        uploadedImageUrls.value[idx] = result.data;
+      }
+    } else {
+      throw new Error(result.message || '上传失败');
+    }
+  } catch (error) {
+    showToast('error', '上传失败', error instanceof Error ? error.message : '图片上传失败');
+    // 移除失败的预览
+    if (newProductImagePreviews.value[idx]?.startsWith('blob:')) {
+      URL.revokeObjectURL(newProductImagePreviews.value[idx]);
+    }
+    newProductImagePreviews.value.splice(idx, 1);
+  }
+
+  if (input) input.value = '';
+};
+
+const removeProductImage = (index: number) => {
+  if (newProductImagePreviews.value[index]?.startsWith('blob:')) {
+    URL.revokeObjectURL(newProductImagePreviews.value[index]);
+  }
+  newProductImagePreviews.value.splice(index, 1);
+  uploadedImageUrls.value.splice(index, 1);
 };
 
 const openAddProductModal = () => {
@@ -206,19 +284,26 @@ const submitAddProduct = async () => {
   const stock = Number(newProductStock.value || 0);
 
   if (!name) {
-    productFormError.value = '请输入商品名称';
+    showToast('error', '上架失败', '请输入商品名称');
+    return;
+  }
+  if (!type) {
+    showToast('error', '上架失败', '请选择商品分类');
     return;
   }
   if (price <= 0) {
-    productFormError.value = '请输入有效商品价格';
+    showToast('error', '上架失败', '请输入有效商品价格');
     return;
   }
   if (stock < 0) {
-    productFormError.value = '库存数量不能小于 0';
+    showToast('error', '上架失败', '库存数量不能小于 0');
+    return;
+  }
+  if (uploadedImageUrls.value.length === 0) {
+    showToast('error', '上架失败', '请至少上传一张商品图片');
     return;
   }
 
-  productFormError.value = '';
 
   try {
     const resp = await fetch(buildApiUrl('/api/products'), {
@@ -229,20 +314,22 @@ const submitAddProduct = async () => {
         type,
         price: Math.round(price),
         stock,
-        description: newProductDescription.value.trim() || null
+        description: newProductDescription.value.trim() || null,
+        imageUrls: uploadedImageUrls.value,
       })
     });
 
     const payload = (await resp.json()) as ApiResponse<unknown>;
     if (!resp.ok || !payload.success) {
-      productFormError.value = payload.message || '上架失败，请稍后重试';
+      showToast('error', '上架失败', payload.message || '请稍后重试');
       return;
     }
 
     closeAddProductModal();
+    showToast('success', '上架成功', `${name} 已成功上架`);
     await fetchSummary();
   } catch {
-    productFormError.value = '网络异常，请稍后重试';
+    showToast('error', '网络异常', '请稍后重试');
   }
 };
 
@@ -330,12 +417,9 @@ onBeforeUnmount(() => {
       <article v-for="(p, idx) in filteredProducts" :key="p.id" class="rounded-[1.45rem] border border-stone-100 bg-white p-3 shadow-[0_12px_30px_rgba(0,0,0,0.03)]">
 
         <div class="flex items-start gap-3">
-          <div class="relative shrink-0">
+          <div class="shrink-0">
             <div class="h-14 w-14 overflow-hidden rounded-[1rem] border border-stone-50">
               <img :src="p.img" :alt="p.name" class="h-full w-full object-cover" />
-            </div>
-            <div v-if="idx < 3" :class="['absolute -left-1 -top-1 flex h-5 w-5 items-center justify-center rounded-md text-[9px] font-black text-white shadow-md', idx === 0 ? 'bg-orange-500' : idx === 1 ? 'bg-stone-400' : 'bg-orange-300']">
-              {{ idx + 1 }}
             </div>
           </div>
           <div class="min-w-0 flex-1">
@@ -441,12 +525,9 @@ onBeforeUnmount(() => {
 
               <td class="py-6 pl-10">
                 <div class="flex items-center gap-4">
-                  <div class="relative shrink-0">
+                  <div class="shrink-0">
                     <div class="h-16 w-16 overflow-hidden rounded-2xl border border-stone-50">
                       <img :src="p.img" :alt="p.name" class="h-full w-full object-cover" />
-                    </div>
-                    <div v-if="idx < 3" :class="['absolute -top-2 -left-2 flex h-6 w-6 items-center justify-center rounded-lg text-[10px] font-black text-white shadow-lg', idx === 0 ? 'bg-orange-500' : idx === 1 ? 'bg-stone-400' : 'bg-orange-300']">
-                      {{ idx + 1 }}
                     </div>
                   </div>
                   <div class="flex flex-col items-start text-left">
@@ -549,44 +630,37 @@ onBeforeUnmount(() => {
           <section>
             <div class="mb-2 flex items-center gap-1 text-sm font-black text-stone-900">
               商品图片 <span class="text-orange-500">*</span>
-              <span class="ml-2 text-[11px] font-semibold text-stone-400">上传清晰美观的图片，建议尺寸 800*800px</span>
+              <span v-if="isCombo" class="ml-2 rounded-full bg-orange-100 px-2.5 py-0.5 text-[10px] font-black text-orange-600">套餐</span>
+              <span class="ml-2 text-[11px] font-semibold text-stone-400">上传多张图片自动标记为套餐，最多 6 张</span>
             </div>
 
-            <button
-              type="button"
-              @click="triggerImagePicker"
-              class="flex h-28 w-full flex-col items-center justify-center rounded-xl border border-dashed border-orange-200 bg-orange-50/20 text-stone-500 transition-all hover:bg-orange-50/40 sm:h-40 sm:rounded-2xl"
-            >
-              <UploadCloud class="h-11 w-11 text-orange-500" />
-              <p class="mt-3 text-lg font-black text-stone-900">点击上传商品图片</p>
-              <p class="mt-2 text-xs font-semibold text-stone-400">支持 JPG / PNG 格式，大小不超过 5MB</p>
-            </button>
+            <div class="flex flex-wrap gap-3">
+              <!-- 已上传的图片 -->
+              <div v-for="(preview, idx) in newProductImagePreviews" :key="idx" class="relative h-20 w-20">
+                <img :src="preview" alt="preview" class="h-full w-full rounded-xl border border-stone-200 object-cover" />
+                <button
+                  @click="removeProductImage(idx)"
+                  class="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] text-white shadow hover:bg-red-600"
+                >×</button>
+              </div>
+              <!-- 新增槽位 -->
+              <button
+                v-if="newProductImagePreviews.length < 6"
+                type="button"
+                @click="triggerImagePicker(newProductImagePreviews.length)"
+                class="flex h-20 w-20 flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-300 text-gray-400 transition-colors hover:border-amber-400 hover:text-amber-500"
+              >
+                <UploadCloud class="h-5 w-5" />
+                <span class="mt-1 text-[10px]">上传</span>
+              </button>
+            </div>
             <input
               ref="imagePickerRef"
               type="file"
               accept="image/png,image/jpeg"
-              multiple
               class="hidden"
               @change="onPickProductImage"
             />
-
-            <div class="mt-4 rounded-2xl border border-stone-100 bg-stone-50/40 p-3">
-              <p class="mb-2 text-xs font-bold text-stone-500">图片预览</p>
-              <div class="grid grid-cols-4 gap-2">
-                <div
-                  v-for="index in 4"
-                  :key="index"
-                  class="aspect-square overflow-hidden rounded-xl border border-stone-200 bg-white"
-                >
-                  <img
-                    v-if="newProductImagePreviews[index - 1]"
-                    :src="newProductImagePreviews[index - 1]"
-                    alt="preview"
-                    class="h-full w-full object-cover"
-                  />
-                </div>
-              </div>
-            </div>
           </section>
 
           <section class="space-y-3.5">
@@ -654,7 +728,6 @@ onBeforeUnmount(() => {
               <p class="mt-1 text-right text-xs font-semibold text-stone-400">{{ descriptionLength }}/200</p>
             </div>
 
-            <p v-if="productFormError" class="rounded-xl bg-rose-50 px-3 py-2 text-xs font-bold text-rose-600">{{ productFormError }}</p>
           </section>
         </div>
 

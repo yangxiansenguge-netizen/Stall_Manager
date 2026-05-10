@@ -13,11 +13,17 @@ import {
   Wallet
 } from 'lucide-vue-next';
 import { buildApiUrl } from '../utils/api';
+import { showToast } from '../composables/useToast';
+
+const emit = defineEmits<{
+  (e: 'navigate-stall'): void;
+}>();
 
 const props = defineProps<{
-
   onBack?: () => void;
 }>();
+
+const noStall = ref(false);
 
 interface ApiResponse<T> {
   success: boolean;
@@ -69,8 +75,18 @@ interface HistoryResponse {
 const loading = ref(false);
 const paying = ref(false);
 const loadingHistory = ref(false);
-const errorMsg = ref('');
-const successMsg = ref('');
+
+const resolveImageUrl = (raw?: string | null): string => {
+  if (!raw) return '';
+  try {
+    const arr = JSON.parse(raw);
+    if (Array.isArray(arr) && arr.length > 0) return arr[0];
+  } catch {
+    // not JSON, use as-is
+    if (raw.startsWith('http')) return raw;
+  }
+  return '';
+};
 
 const searchQuery = ref('');
 const activeCategory = ref('全部');
@@ -142,15 +158,6 @@ const sortedHistoryOrders = computed(() => {
   return [...historyOrders.value].sort((a, b) => toMs(b.paidAt || b.soldAt) - toMs(a.paidAt || a.soldAt));
 });
 
-const setError = (msg: string) => {
-  successMsg.value = '';
-  errorMsg.value = msg;
-};
-
-const setSuccess = (msg: string) => {
-  errorMsg.value = '';
-  successMsg.value = msg;
-};
 
 const clearPendingOrder = () => {
   orderStage.value = 'draft';
@@ -168,12 +175,12 @@ const findProduct = (productId: number) => products.value.find((p) => p.id === p
 const addToCart = (productId: number) => {
   const product = findProduct(productId);
   if (!product) {
-    setError('商品不存在，请刷新后重试');
+    showToast('error', '错误','商品不存在，请刷新后重试');
     return;
   }
   const nextQty = (cart.value[productId] || 0) + 1;
   if (nextQty > product.stock) {
-    setError('已达到库存上限');
+    showToast('error', '错误','已达到库存上限');
     return;
   }
   cart.value[productId] = nextQty;
@@ -190,12 +197,12 @@ const decCart = (productId: number) => {
 const incCart = (productId: number) => {
   const product = findProduct(productId);
   if (!product) {
-    setError('商品不存在，请刷新后重试');
+    showToast('error', '错误','商品不存在，请刷新后重试');
     return;
   }
   const nextQty = (cart.value[productId] || 0) + 1;
   if (nextQty > product.stock) {
-    setError('已达到库存上限');
+    showToast('error', '错误','已达到库存上限');
     return;
   }
   cart.value[productId] = nextQty;
@@ -207,7 +214,6 @@ const removeCartItem = (productId: number) => {
 
 const fetchProducts = async () => {
   loading.value = true;
-  errorMsg.value = '';
   try {
     const resp = await fetch(buildApiUrl('/api/orders/manual/products'), {
 
@@ -219,7 +225,7 @@ const fetchProducts = async () => {
     }
     products.value = payload.data.products || [];
   } catch (err) {
-    setError(err instanceof Error ? err.message : '加载商品失败');
+    showToast('error', '错误',err instanceof Error ? err.message : '加载商品失败');
   } finally {
     loading.value = false;
   }
@@ -246,7 +252,7 @@ const fetchHistory = async () => {
 
 const completeOrder = () => {
   if (!cartItems.value.length) {
-    setError('请先选择商品再完成订单');
+    showToast('error', '错误','请先选择商品再完成订单');
     return;
   }
   if (!pendingOrderNo.value) {
@@ -254,28 +260,26 @@ const completeOrder = () => {
   }
   pendingCreatedAt.value = new Date().toLocaleString();
   orderStage.value = 'pending_payment';
-  setSuccess('已生成待支付订单，可继续修改后再确认支付');
+  showToast('success', '成功','已生成待支付订单，可继续修改后再确认支付');
 };
 
 const editPendingOrder = () => {
   if (!hasPendingOrder.value) return;
-  setSuccess('已进入修改订单状态，可继续调整商品数量');
+  showToast('success', '成功','已进入修改订单状态，可继续调整商品数量');
 };
 
 const confirmPayment = async () => {
   if (!hasPendingOrder.value) {
-    setError('请先点击“完成订单”生成待支付记录');
+    showToast('error', '错误','请先点击“完成订单”生成待支付记录');
     return;
   }
 
   if (!cartItems.value.length) {
-    setError('待支付订单为空，请先添加商品');
+    showToast('error', '错误','待支付订单为空，请先添加商品');
     return;
   }
 
   paying.value = true;
-  errorMsg.value = '';
-  successMsg.value = '';
   try {
     const resp = await fetch(buildApiUrl('/api/orders/manual/checkout'), {
 
@@ -295,17 +299,26 @@ const confirmPayment = async () => {
       throw new Error(payload.message || '支付失败');
     }
 
-    setSuccess(`支付成功，订单 ${payload.data?.orderNo || ''} 已入库`);
+    showToast('success', '成功',`支付成功，订单 ${payload.data?.orderNo || ''} 已入库`);
     clearCart(true);
+    await fetchProducts();
     await fetchHistory();
   } catch (err) {
-    setError(err instanceof Error ? err.message : '支付失败');
+    showToast('error', '错误',err instanceof Error ? err.message : '支付失败');
   } finally {
     paying.value = false;
   }
 };
 
 onMounted(async () => {
+  try {
+    const resp = await fetch(buildApiUrl('/api/stalls/onboarding/status'), { headers: authHeaders() });
+    const payload = await resp.json();
+    if (payload.success && payload.data && payload.data.currentStatus === 'NONE') {
+      noStall.value = true;
+      return;
+    }
+  } catch { /* proceed */ }
   await Promise.all([fetchProducts(), fetchHistory()]);
 });
 </script>
@@ -327,7 +340,16 @@ onMounted(async () => {
       </button>
     </div>
 
-    <div class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
+    <div v-if="noStall" class="rounded-[2rem] border border-amber-200 bg-amber-50/60 p-8 text-center">
+      <Store class="mx-auto h-10 w-10 text-amber-400 mb-3" />
+      <h3 class="text-lg font-black text-stone-800 mb-2">请先申请摊位</h3>
+      <p class="text-sm text-stone-500 mb-5">您还没有申请摊位，无法进行手动点单操作</p>
+      <button @click="emit('navigate-stall')" class="inline-flex items-center gap-2 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white px-6 py-3 text-sm font-black transition-colors shadow-lg shadow-amber-200">
+        前往申请摊位
+      </button>
+    </div>
+
+    <div v-else class="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
       <section class="space-y-4 rounded-2xl border border-stone-100 bg-stone-50/40 p-4">
         <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -358,22 +380,39 @@ onMounted(async () => {
         </div>
 
         <div v-if="loading" class="rounded-xl bg-white p-4 text-sm text-stone-500">加载商品中...</div>
+        <p v-else class="text-[10px] font-medium text-stone-400">点击商品卡片或右侧 + 按钮加入订单</p>
+        <div v-if="!loading && !filteredProducts.length" class="rounded-xl bg-stone-50 p-4 text-center text-xs text-stone-400">暂无符合条件的商品</div>
         <div v-else class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           <article
             v-for="product in filteredProducts"
             :key="product.id"
-            class="rounded-xl border border-stone-200 bg-white p-3"
+            class="group overflow-hidden rounded-xl border border-stone-200 bg-white transition-shadow hover:shadow-md cursor-pointer"
+            @click="addToCart(product.id)"
           >
-            <h3 class="text-sm font-black text-stone-900">{{ product.name }}</h3>
-            <p class="mt-1 text-xs text-stone-400">{{ product.type }} · 库存 {{ product.stock }}</p>
-            <div class="mt-3 flex items-center justify-between">
-              <p class="text-base font-black text-orange-500">¥{{ product.price }}</p>
-              <button
-                class="inline-flex items-center gap-1 rounded-lg bg-stone-900 px-2.5 py-1.5 text-xs font-bold text-white"
-                @click="addToCart(product.id)"
-              >
-                <Plus class="h-3.5 w-3.5" /> 加入
-              </button>
+            <div class="relative aspect-[4/3] w-full overflow-hidden bg-stone-100">
+              <img
+                v-if="resolveImageUrl(product.imageUrl)"
+                :src="resolveImageUrl(product.imageUrl)"
+                :alt="product.name"
+                class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                referrerpolicy="no-referrer"
+              />
+              <div v-else class="flex h-full w-full items-center justify-center">
+                <ShoppingCart class="h-10 w-10 text-stone-300" />
+              </div>
+            </div>
+            <div class="p-3">
+              <h3 class="text-sm font-black text-stone-900 truncate">{{ product.name }}</h3>
+              <p class="mt-1 text-xs text-stone-400">{{ product.type }} · 库存 {{ product.stock }}</p>
+              <div class="mt-2 flex items-center justify-between">
+                <p class="text-base font-black text-orange-500">¥{{ product.price }}</p>
+                <button
+                  class="inline-flex items-center gap-1 rounded-lg bg-orange-500 px-2.5 py-1.5 text-xs font-bold text-white transition-colors hover:bg-orange-600"
+                  @click.stop="addToCart(product.id)"
+                >
+                  <Plus class="h-3.5 w-3.5" /> 加入
+                </button>
+              </div>
             </div>
           </article>
         </div>
@@ -446,7 +485,7 @@ onMounted(async () => {
 
           <button
             v-if="!hasPendingOrder"
-            class="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-stone-900 px-3 py-2 text-sm font-black text-white disabled:opacity-50"
+            class="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-3 py-2 text-sm font-black text-white disabled:opacity-50 hover:bg-orange-600 transition-colors"
             :disabled="!cartItems.length"
             @click="completeOrder"
           >
@@ -495,7 +534,5 @@ onMounted(async () => {
       </div>
     </section>
 
-    <p v-if="errorMsg" class="rounded-xl bg-rose-50 px-3 py-2 text-xs font-bold text-rose-600">{{ errorMsg }}</p>
-    <p v-if="successMsg" class="rounded-xl bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-600">{{ successMsg }}</p>
   </div>
 </template>

@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue';
 import Header from './components/Header.vue';
 import BottomNav from './components/BottomNav.vue';
+import ToastNotification from './components/ToastNotification.vue';
 import AuthScreen from './screens/AuthScreen.vue';
 import DashboardScreen from './screens/DashboardScreen.vue';
 import StallScreen from './screens/StallScreen.vue';
@@ -16,8 +17,6 @@ interface AuthSession {
   token: string;
   merchantId: string;
   merchantName: string;
-  stallName: string;
-  boothCode: string;
   phone: string;
   onboardingStatus: string;
   expiresAt: string;
@@ -37,7 +36,7 @@ const AUTH_SESSION_KEY = 'stall_auth_session';
 const isLoggedIn = ref(false);
 const isAuthLoading = ref(true);
 const activeTab = ref<Tab>('home');
-const businessSubView = ref<'main' | 'products' | 'manualOrder' | 'advanced'>('main');
+const businessSubView = ref<'main' | 'products' | 'manualOrder'>('main');
 const authSession = ref<AuthSession | null>(null);
 
 const merchantName = computed(() => authSession.value?.merchantName ?? '');
@@ -105,7 +104,7 @@ const onTabChange = (tab: Tab) => {
   activeTab.value = tab;
 };
 
-const navigateToBusiness = (subView: 'main' | 'products' | 'manualOrder' | 'advanced' = 'main') => {
+const navigateToBusiness = (subView: 'main' | 'products' | 'manualOrder' = 'main') => {
   activeTab.value = 'business';
   businessSubView.value = subView;
 };
@@ -124,10 +123,11 @@ const navigateToStall = () => {
     <Transition name="fade" mode="out-in">
       <AuthScreen @login="handleLogin" />
     </Transition>
+    <ToastNotification />
   </div>
 
   <div v-else class="min-h-screen bg-[#F8F7F5] pb-[calc(6.5rem+env(safe-area-inset-bottom))] flex flex-col items-center">
-    <Header @open-messages="activeTab = 'messages'" />
+    <Header :merchant-name="merchantName" @open-messages="activeTab = 'messages'" />
 
     <main class="w-full max-w-screen-xl mx-auto flex-1 px-3 sm:px-4 md:px-6 pt-[calc(5rem+env(safe-area-inset-top))] sm:pt-[calc(6rem+env(safe-area-inset-top))] pb-[calc(2rem+env(safe-area-inset-bottom))] sm:pb-12">
       <Transition name="page-fade" mode="out-in">
@@ -145,6 +145,7 @@ const navigateToStall = () => {
             v-else-if="activeTab === 'business'"
             :initial-view="businessSubView"
             @view-change="val => businessSubView = val"
+            @navigate-stall="navigateToStall"
           />
           <SettingsScreen v-else-if="activeTab === 'settings'" :on-logout="handleLogout" />
           <MessageScreen v-else-if="activeTab === 'messages'" />
@@ -156,6 +157,7 @@ const navigateToStall = () => {
       :active-tab="activeTab"
       @tab-change="onTabChange"
     />
+    <ToastNotification />
   </div>
 </template>
 

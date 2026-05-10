@@ -12,6 +12,7 @@ import {
 } from 'lucide-vue-next';
 import AgreementModal from '../components/AgreementModal.vue';
 import { buildApiUrl } from '../utils/api';
+import { showToast } from '../composables/useToast';
 import backgroundVideo from '../../烟火气.mp4';
 
 
@@ -21,8 +22,6 @@ interface AuthSession {
   token: string;
   merchantId: string;
   merchantName: string;
-  stallName: string;
-  boothCode: string;
   phone: string;
   onboardingStatus: string;
   expiresAt: string;
@@ -62,28 +61,19 @@ const showRegisterPassword = ref(false);
 const showRegisterConfirmPassword = ref(false);
 
 const loading = ref(false);
-const errorMessage = ref('');
-const successMessage = ref('');
-
-const clearMessages = () => {
-  errorMessage.value = '';
-  successMessage.value = '';
-};
 
 const isValidPhone = (phone: string) => /^\d{11}$/.test(phone.trim());
 
 const fillLoginSmsCode = () => {
   if (loading.value) return;
   loginCredential.value = '123456';
-  clearMessages();
-  successMessage.value = '验证码已发送，请查收';
+  showToast('info', '验证码', '验证码已发送，请查收');
 };
 
 const fillRegisterSmsCode = () => {
   if (loading.value) return;
   registerSmsCode.value = '123456';
-  clearMessages();
-  successMessage.value = '验证码已发送，请查收';
+  showToast('info', '验证码', '验证码已发送，请查收');
 };
 
 const requestAuth = async <T,>(path: string, body?: unknown, token?: string): Promise<T> => {
@@ -136,21 +126,20 @@ const onLogin = async () => {
   if (loading.value) {
     return;
   }
-  clearMessages();
   const phone = loginPhone.value.trim();
   const credential = loginCredential.value.trim();
 
   if (!isValidPhone(phone)) {
-    errorMessage.value = '请输入11位手机号';
+    showToast('error', '登录失败', '请输入11位手机号');
     return;
   }
   if (!credential) {
-    errorMessage.value = loginMode.value === 'code' ? '请输入验证码' : '请输入登录密码';
+    showToast('error', '登录失败', loginMode.value === 'code' ? '请输入验证码' : '请输入登录密码');
     return;
   }
 
   if (!loginAgreement.value) {
-    errorMessage.value = '请先阅读并同意协议';
+    showToast('warning', '提示', '请先阅读并同意协议');
     return;
   }
 
@@ -162,10 +151,10 @@ const onLogin = async () => {
       credential
     });
     persistSession(session);
-    successMessage.value = '登录成功';
+    showToast('success', '登录成功', '欢迎回来！');
     emit('login', session);
   } catch (error) {
-    errorMessage.value = resolveUiErrorMessage(error, '登录失败，请核对账号信息后重试');
+    showToast('error', '登录失败', resolveUiErrorMessage(error, '请核对账号信息后重试'));
   } finally {
     loginCredential.value = '';
     showLoginPassword.value = false;
@@ -177,29 +166,27 @@ const onRegister = async () => {
   if (loading.value) {
     return;
   }
-  clearMessages();
 
   const phone = registerPhone.value.trim();
   const smsCode = registerSmsCode.value.trim();
   const password = registerPassword.value.trim();
   const confirmPassword = registerConfirmPassword.value.trim();
 
-
   if (!isValidPhone(phone)) {
-    errorMessage.value = '请输入11位手机号';
+    showToast('error', '注册失败', '请输入11位手机号');
     return;
   }
 
   if (!password || password.length < 6 || password.length > 16) {
-    errorMessage.value = '密码长度需为6-16位';
+    showToast('error', '注册失败', '密码长度需为6-16位');
     return;
   }
   if (password !== confirmPassword) {
-    errorMessage.value = '两次输入的密码不一致';
+    showToast('error', '注册失败', '两次输入的密码不一致');
     return;
   }
   if (!registerAgreement.value) {
-    errorMessage.value = '请先阅读并同意协议';
+    showToast('warning', '提示', '请先阅读并同意协议');
     return;
   }
 
@@ -212,10 +199,10 @@ const onRegister = async () => {
       confirmPassword
     });
     persistSession(session);
-    successMessage.value = '注册成功，已自动登录';
+    showToast('success', '注册成功', '已自动登录，欢迎加入！');
     emit('login', session);
   } catch (error) {
-    errorMessage.value = resolveUiErrorMessage(error, '注册失败，请检查信息后重试');
+    showToast('error', '注册失败', resolveUiErrorMessage(error, '请检查信息后重试'));
   } finally {
     registerPassword.value = '';
     registerConfirmPassword.value = '';
@@ -230,14 +217,12 @@ const onRegister = async () => {
 const switchToRegister = () => {
   isLogin.value = false;
   showLoginPassword.value = false;
-  clearMessages();
 };
 
 const switchToLogin = () => {
   isLogin.value = true;
   showRegisterPassword.value = false;
   showRegisterConfirmPassword.value = false;
-  clearMessages();
 };
 </script>
 
@@ -375,13 +360,6 @@ const switchToLogin = () => {
               </label>
             </div>
 
-            <p v-if="errorMessage" class="rounded-lg bg-red-50 px-3 py-2 text-left text-[11px] font-semibold text-red-500">
-              {{ errorMessage }}
-            </p>
-            <p v-else-if="successMessage" class="rounded-lg bg-emerald-50 px-3 py-2 text-left text-[11px] font-semibold text-emerald-600">
-              {{ successMessage }}
-            </p>
-
             <button
               @click="onLogin"
               :disabled="loading"
@@ -512,13 +490,6 @@ const switchToLogin = () => {
                 <span @click.prevent="activeAgreement = 'privacy'" class="cursor-pointer text-amber-600 hover:underline">《隐私政策》</span>
               </label>
             </div>
-
-            <p v-if="errorMessage" class="rounded-lg bg-red-50 px-3 py-2 text-left text-[11px] font-semibold text-red-500">
-              {{ errorMessage }}
-            </p>
-            <p v-else-if="successMessage" class="rounded-lg bg-emerald-50 px-3 py-2 text-left text-[11px] font-semibold text-emerald-600">
-              {{ successMessage }}
-            </p>
 
             <button
               type="button"

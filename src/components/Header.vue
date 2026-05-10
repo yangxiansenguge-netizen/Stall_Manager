@@ -9,13 +9,11 @@ import {
 
 defineProps<{
   onOpenMessages?: () => void;
+  merchantName?: string;
 }>();
 
 const showNotifications = ref(false);
-const notifications = [
-  { id: 1, title: '摊位申请通过', content: '您在 文化广场 的 创意手工 摊位申请已审核完毕：通过。', time: '10分钟前', type: 'success' },
-  { id: 2, title: '设施申请反馈', content: '您的 户外遮阳伞 申请已受理，请在明天 10:00 前往物业领取。', time: '2小时前', type: 'info' },
-];
+const notifications: { id: number; title: string; content: string; time: string; type: string }[] = [];
 </script>
 
 <template>
@@ -47,7 +45,7 @@ const notifications = [
           class="relative rounded-full p-2 transition-colors hover:bg-stone-50 sm:p-2.5"
         >
           <Bell class="h-5 w-5 text-stone-900" />
-          <span class="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full border-2 border-white bg-rose-500 text-[8px] font-black text-white sm:right-2 sm:top-2">3</span>
+          <span v-if="notifications.length" class="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full border-2 border-white bg-rose-500 text-[8px] font-black text-white sm:right-2 sm:top-2">{{ notifications.length }}</span>
         </button>
 
         <div class="flex items-center gap-2 border-l border-stone-100 pl-2 sm:gap-3 sm:pl-4">
@@ -55,7 +53,7 @@ const notifications = [
             <img src="https://picsum.photos/seed/user_强/100/100" alt="Avatar" class="w-full h-full object-cover" referrerPolicy="no-referrer" />
           </div>
           <div class="hidden sm:flex items-center gap-1.5 cursor-pointer group">
-            <span class="text-sm font-bold text-stone-900">阿强</span>
+            <span class="text-sm font-bold text-stone-900">{{ merchantName || '商户' }}</span>
             <ChevronDown class="w-4 h-4 text-stone-400 group-hover:translate-y-0.5 transition-transform" />
           </div>
         </div>
@@ -73,7 +71,7 @@ const notifications = [
           <div>
             <div class="p-4 bg-stone-50 border-b border-stone-100 flex justify-between items-center">
               <h4 class="font-bold text-sm">最新通知</h4>
-              <span class="text-[10px] font-black text-amber-500 uppercase tracking-widest">3 条未读</span>
+              <span class="text-[10px] font-black text-amber-500 uppercase tracking-widest">{{ notifications.length }} 条消息</span>
             </div>
             <div class="max-h-[320px] overflow-y-auto">
               <div v-for="msg in notifications" :key="msg.id" class="p-4 border-b border-stone-50 hover:bg-stone-50 transition-colors cursor-pointer group">

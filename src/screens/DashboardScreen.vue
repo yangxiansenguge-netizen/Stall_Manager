@@ -14,6 +14,7 @@ import {
   Eye,
   ArrowUpRight
 } from 'lucide-vue-next';
+import { buildApiUrl } from '../utils/api';
 import stallCartImage from '../../摊位车.png';
 
 const props = defineProps<{
@@ -40,7 +41,31 @@ const merchantNickName = computed(() => {
   return name ? `阿${name.slice(-1)}` : '阿掌柜';
 });
 
+const dashboardKpis = ref([
+  { label: '今日收入', value: '¥ --', icon: CircleDollarSign, color: 'text-amber-600', bg: 'bg-amber-100/50', trend: '--', trendUp: true },
+  { label: '售出商品', value: '--', icon: Activity, color: 'text-emerald-600', bg: 'bg-emerald-100/50', trend: '--', trendUp: true },
+  { label: '今日订单', value: '--', icon: Trophy, color: 'text-blue-600', bg: 'bg-blue-100/50', trend: '--', trendUp: true, isRank: true },
+  { label: '数据模式', value: 'MySQL', icon: Eye, color: 'text-indigo-600', bg: 'bg-indigo-100/50', trend: '已接入', trendUp: true },
+]);
+
+const fetchDashboard = async () => {
+  try {
+    const token = localStorage.getItem('stall_auth_token') || '';
+    const resp = await fetch(buildApiUrl('/api/dashboard/home'), {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const payload = await resp.json();
+    if (payload.success && payload.data) {
+      const metrics = payload.data.overviewMetrics || [];
+      if (metrics.length >= 1) { dashboardKpis.value[0].value = metrics[0].value; dashboardKpis.value[0].trend = metrics[0].trend || '--'; dashboardKpis.value[0].trendUp = metrics[0].trendUp !== false; }
+      if (metrics.length >= 2) { dashboardKpis.value[1].value = metrics[1].value; dashboardKpis.value[1].trend = metrics[1].trend || '--'; dashboardKpis.value[1].trendUp = metrics[1].trendUp !== false; }
+      if (metrics.length >= 3) { dashboardKpis.value[2].value = metrics[2].value; dashboardKpis.value[2].trend = metrics[2].trend || '--'; dashboardKpis.value[2].trendUp = metrics[2].trendUp !== false; }
+    }
+  } catch { /* keep fallback */ }
+};
+
 onMounted(() => {
+  fetchDashboard();
   greetingTimer = setInterval(() => {
     currentTime.value = new Date();
   }, 30 * 1000);
@@ -138,12 +163,7 @@ onUnmounted(() => {
           </span>
         </div>
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-          <div v-for="(item, idx) in [
-            { label: '预计收入', value: '¥ 1,280', icon: CircleDollarSign, color: 'text-amber-600', bg: 'bg-amber-100/50', trend: '+12%', trendUp: true },
-            { label: '客流指数', value: '8.6', icon: Activity, color: 'text-emerald-600', bg: 'bg-emerald-100/50', trend: '+8%', trendUp: true },
-            { label: '摊位排名', value: '第 3 名', icon: Trophy, color: 'text-blue-600', bg: 'bg-blue-100/50', trend: '2', trendUp: true, isRank: true },
-            { label: '曝光量', value: '2,560', icon: Eye, color: 'text-indigo-600', bg: 'bg-indigo-100/50', trend: '+15%', trendUp: true },
-          ]" :key="idx" class="space-y-4">
+          <div v-for="(item, idx) in dashboardKpis" :key="idx" class="space-y-4">
             <div class="flex items-center gap-3">
               <div :class="['w-10 h-10 rounded-xl', item.bg, 'flex items-center justify-center']">
                 <component :is="item.icon" :class="['w-5 h-5', item.color]" />

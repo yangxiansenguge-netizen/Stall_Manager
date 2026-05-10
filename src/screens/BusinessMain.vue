@@ -1,19 +1,12 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import {
-  ShoppingBag,
-  Clock,
-  Filter,
-  ArrowUp,
-  ArrowDown,
-  Activity,
-  Lightbulb,
-  Bot,
-  ChevronRight,
-  Trophy,
-  BadgeDollarSign
+  TrendingUp, Users, ShoppingBag, ArrowUpRight, ArrowDown, Timer, CheckCircle2,
+  Lightbulb, ChevronRight, Plus, Bell, Store, X, UploadCloud, Send,
 } from 'lucide-vue-next';
 import VueApexCharts from 'vue3-apexcharts';
+import { buildApiUrl } from '../utils/api';
+import { showToast } from '../composables/useToast';
 import robotImage from '../../机器人.png';
 import lemonTeaImage from '../assets/lemon-tea.svg';
 import berrySodaImage from '../assets/berry-soda.svg';
@@ -21,323 +14,624 @@ import milkTeaImage from '../assets/milk-tea.svg';
 import coconutDrinkImage from '../assets/coconut-drink.svg';
 import coconutLatteImage from '../assets/coconut-latte.svg';
 
-const timeRange = ref<'today' | 'week' | 'month'>('today');
+const emit = defineEmits<{
+  (e: 'view-change', view: 'manualOrder'): void;
+  (e: 'navigate-stall'): void;
+  (e: 'back'): void;
+}>();
 
-const hourlyData = [
-  { time: '08:00', revenue: 120, traffic: 400 },
-  { time: '10:00', revenue: 350, traffic: 800 },
-  { time: '12:00', revenue: 1100, traffic: 2200 },
-  { time: '14:00', revenue: 800, traffic: 1500 },
-  { time: '16:00', revenue: 600, traffic: 1200 },
-  { time: '18:00', revenue: 2100, traffic: 4500 },
-  { time: '20:00', revenue: 4200, traffic: 8000 },
-  { time: '22:00', revenue: 1800, traffic: 3200 },
-];
+// ===== 数据状态 =====
+const todayRevenue = ref('¥ --');
+const todayOrders = ref('--');
+const todaySold = ref('--');
+const conversion = ref('--');
+const revenueTrendUp = ref(true);
+const revenueTrendPct = ref('--');
+const yesterdayRevenueVal = ref('¥0');
+const soldTrendUp = ref(true);
+const soldTrendPct = ref('--');
+const yesterdaySoldVal = ref('0');
+const ordersTrendUp = ref(true);
+const ordersTrendPct = ref('--');
+const yesterdayOrdersVal = ref('0');
+const revenueTrend = ref<Array<{ time: string; revenue: number }>>([]);
+const yesterdayRevenueTrend = ref<Array<{ time: string; revenue: number }>>([]);
+const chartKey = ref(0);
+const topProducts = ref<Array<{ name: string; sales: number; revenue: number; trend: string; imageUrl: string | null }>>([]);
+const aiSuggestions = ref<Array<{ title: string; value: string; description: string; type: string }>>([]);
+const feedItems = ref<Array<{ id: number; type: string; time: string; content: string; amount?: string }>>([]);
 
-const revenueSeries = [{
-  name: '收入',
-  data: hourlyData.map(d => d.revenue)
-}];
+interface ProductItem {
+  id: number; name: string; price: number; stock: number; monthlySales: number;
+  img: string; tag: string; type: string; active: boolean;
+}
+const products = ref<ProductItem[]>([]);
+const togglingId = ref<number | null>(null);
 
-const trafficSeries = [{
-  name: '客流',
-  data: hourlyData.map(d => d.traffic)
-}];
+const MOCK_IMAGES = [lemonTeaImage, berrySodaImage, milkTeaImage, coconutDrinkImage, coconutLatteImage];
 
-const revenueChartOptions = {
-  chart: {
-    id: 'revenue-chart',
-    toolbar: { show: false },
-    sparkline: { enabled: false },
-    fontFamily: 'Inter, sans-serif'
-  },
-  stroke: {
-    curve: 'smooth',
-    width: 3,
-    colors: ['#f97316']
-  },
-  fill: {
-    type: 'gradient',
-    gradient: {
-      shadeIntensity: 1,
-      opacityFrom: 0.45,
-      opacityTo: 0.05,
-      stops: [50, 100],
-      colorStops: [
-        { offset: 0, color: '#f97316', opacity: 0.4 },
-        { offset: 100, color: '#f97316', opacity: 0 }
-      ]
-    }
-  },
-  xaxis: {
-    categories: hourlyData.map(d => d.time),
-    labels: { style: { colors: '#A8A29E', fontSize: '10px', fontWeight: 900 } },
-    axisBorder: { show: false },
-    axisTicks: { show: false },
-  },
-  yaxis: {
-    labels: { style: { colors: '#A8A29E', fontSize: '10px', fontWeight: 900 } }
-  },
-  grid: {
-    borderColor: '#F1F5F9',
-    strokeDashArray: 4,
-    xaxis: { lines: { show: false } }
-  },
-  tooltip: {
-    theme: 'light',
-    x: { show: true },
-    y: { formatter: (val: number) => `¥${val}` }
-  },
-  colors: ['#f97316']
+const authHeaders = () => {
+  const token = localStorage.getItem('stall_auth_token') || '';
+  return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
 };
 
-const trafficChartOptions = {
-  chart: {
-    id: 'traffic-chart',
-    toolbar: { show: false },
-    fontFamily: 'Inter, sans-serif'
-  },
-  plotOptions: {
-    bar: {
-      borderRadius: 6,
-      columnWidth: '45%',
-      distributed: true
-    }
-  },
+const parseImageUrl = (raw?: string | null): string => {
+  if (!raw) return '';
+  try { const arr = JSON.parse(raw); if (Array.isArray(arr) && arr.length > 0) return arr[0]; }
+  catch { if (raw.startsWith('http')) return raw; }
+  return '';
+};
+
+// ===== 收入趋势图 ApexCharts（双线） =====
+const chartSeries = computed(() => [
+  { name: '今日收入', data: revenueTrend.value.map(d => d.revenue) },
+  { name: '昨日收入', data: yesterdayRevenueTrend.value.map(d => d.revenue) },
+]);
+const chartOptions = ref({
+  chart: { id: 'revenue-trend', toolbar: { show: false }, fontFamily: 'Inter, sans-serif' },
+  stroke: { curve: 'smooth' as const, width: [3, 2], dashArray: [0, 5] },
+  fill: { type: 'solid' as const, opacity: [0.15, 0.05] },
+  xaxis: { categories: [] as string[], labels: { style: { colors: '#94a3b8', fontSize: '10px', fontWeight: 600 } }, axisBorder: { show: false }, axisTicks: { show: false } },
+  yaxis: { labels: { style: { colors: '#94a3b8', fontSize: '10px', fontWeight: 600 } } },
+  grid: { borderColor: '#f1f5f9', strokeDashArray: 4, xaxis: { lines: { show: false } } },
+  tooltip: { theme: 'light' as const, y: { formatter: (val: number) => `¥${val}` } },
+  colors: ['#f97316', '#6366f1'],
   dataLabels: { enabled: false },
-  xaxis: {
-    categories: hourlyData.map(d => d.time),
-    labels: { style: { colors: '#A8A29E', fontSize: '10px', fontWeight: 900 } },
-    axisBorder: { show: false },
-    axisTicks: { show: false },
-  },
-  yaxis: {
-    labels: { style: { colors: '#A8A29E', fontSize: '10px', fontWeight: 900 } }
-  },
-  grid: {
-    borderColor: '#F1F5F9',
-    strokeDashArray: 4,
-  },
-  legend: { show: false },
-  colors: hourlyData.map(d => d.time === '20:00' ? '#f97316' : '#818cf8')
+  legend: { show: true, position: 'bottom' as const, fontSize: '12px', fontWeight: 600 },
+});
+
+// ===== 数据获取 =====
+const fetchBusiness = async () => {
+  try {
+    const resp = await fetch(buildApiUrl('/api/dashboard/business'), { headers: authHeaders() });
+    const payload = await resp.json();
+    if (!payload.success || !payload.data) return;
+    const d = payload.data;
+
+    const rev = d.revenueTrend || [];
+    revenueTrend.value = rev.map((r: any) => ({ time: r.time || '--', revenue: r.revenue || 0 }));
+    const yest = d.yesterdayRevenueTrend || [];
+    yesterdayRevenueTrend.value = yest.map((r: any) => ({ time: r.time || '--', revenue: r.revenue || 0 }));
+    // 同步更新时间轴到图表
+    chartOptions.value = { ...chartOptions.value, xaxis: { ...chartOptions.value.xaxis, categories: revenueTrend.value.map(d => d.time) } };
+    chartKey.value++;
+
+    topProducts.value = (d.topProducts || []).map((p: any) => ({
+      name: p.name || '--', sales: p.sales || 0, revenue: p.revenue || 0,
+      trend: p.trend || '0', imageUrl: parseImageUrl(p.imageUrl) || null,
+    }));
+
+    aiSuggestions.value = (d.aiSuggestions || []).map((s: any) => ({
+      title: s.title || '', value: s.value || '', description: s.description || '', type: s.type || 'info',
+    }));
+
+    // 今日数据（顶部展示）
+    todayRevenue.value = d.todayRevenue || '¥ --';
+    todaySold.value = d.todaySold || '--';
+    todayOrders.value = d.todayOrders || '--';
+
+    const kpis = d.kpis || [];
+    if (kpis.length >= 1) { yesterdayRevenueVal.value = kpis[0].value || '¥0'; revenueTrendUp.value = kpis[0].trendUp !== false; revenueTrendPct.value = kpis[0].trend || '--'; }
+    if (kpis.length >= 2) { yesterdaySoldVal.value = kpis[1].value || '0'; soldTrendUp.value = kpis[1].trendUp !== false; soldTrendPct.value = kpis[1].trend || '--'; }
+    if (kpis.length >= 3) { yesterdayOrdersVal.value = kpis[2].value || '0'; ordersTrendUp.value = kpis[2].trendUp !== false; ordersTrendPct.value = kpis[2].trend || '--'; }
+    if (kpis.length >= 4) conversion.value = kpis[3].value || '--';
+
+    feedItems.value = [
+      { id: 1, type: 'order', time: '刚刚', content: `今日已售 ${todaySold.value} 件`, amount: todayRevenue.value },
+      { id: 2, type: 'user', time: '实时', content: '经营看板已接入实时数据' },
+      { id: 3, type: 'complete', time: '今日', content: `已完成 ${todayOrders.value} 笔订单` },
+    ];
+  } catch { /* keep defaults */ }
 };
 
-const topProducts = [
-  { name: '招牌手打柠檬茶', sales: 142, revenue: 2556, ctr: '8.4%', trend: '+12%', img: lemonTeaImage },
-  { name: '爆捶草莓野山蓝', sales: 98, revenue: 1960, ctr: '6.2%', trend: '+8%', img: berrySodaImage },
-  { name: '经典港式奶茶', sales: 86, revenue: 1376, ctr: '5.1%', trend: '-2%', img: milkTeaImage },
-  { name: '泰式椰奶冰', sales: 74, revenue: 1628, ctr: '7.5%', trend: '+24%', img: coconutDrinkImage },
-  { name: '生椰拿铁', sales: 62, revenue: 1240, ctr: '4.8%', trend: '+5%', img: coconutLatteImage },
-];
+const fetchProducts = async () => {
+  try {
+    const resp = await fetch(buildApiUrl('/api/products/summary'), { headers: authHeaders() });
+    const payload = await resp.json();
+    if (!payload.success || !payload.data) return;
+    products.value = (payload.data.products || []).map((p: any, i: number) => ({
+      id: p.id, name: p.name, price: p.price || 0, stock: p.stock || 0,
+      monthlySales: p.monthlySales || 0, tag: p.tag || '常规', type: p.type || '其他',
+      img: parseImageUrl(p.imageUrl) || MOCK_IMAGES[i % MOCK_IMAGES.length],
+      active: p.status !== 'INACTIVE',
+    }));
+  } catch { /* keep defaults */ }
+};
 
-const kpis = [
-  { title: '预计收入', value: '¥1,280', icon: BadgeDollarSign, color: 'text-orange-500', cardBg: 'from-orange-50 to-white', trend: '+12.5%', chartColor: '#f97316', points: '0,40 10,25 20,35 30,15 40,20 50,5' },
-  { title: '售出商品', value: '148', icon: ShoppingBag, color: 'text-indigo-500', cardBg: 'from-indigo-50 to-white', trend: '+8.3%', chartColor: '#6366f1', points: '0,35 10,30 20,40 30,25 40,35 50,15' },
-  { title: '曝光量', value: '2,560', icon: Trophy, color: 'text-blue-500', cardBg: 'from-blue-50 to-white', trend: '+6.1%', chartColor: '#3b82f6', points: '0,25 10,35 20,20 30,30 40,15 50,25' },
-  { title: '转化率', value: '18.5%', icon: Activity, color: 'text-fuchsia-500', cardBg: 'from-fuchsia-50 to-white', trend: '-2.6%', chartColor: '#ef4444', points: '0,15 10,20 20,10 30,25 40,20 50,30' },
-];
+// ===== 商品 toggle =====
+const toggleProduct = async (product: ProductItem) => {
+  if (togglingId.value) return;
+  togglingId.value = product.id;
+  try {
+    const resp = await fetch(buildApiUrl(`/api/products/${product.id}/toggle`), {
+      method: 'PUT', headers: authHeaders(),
+    });
+    const payload = await resp.json();
+    if (payload.success) {
+      product.active = !product.active;
+      showToast('success', product.active ? '已上架' : '已下架', product.name);
+      await fetchProducts();
+    }
+  } catch { showToast('error', '操作失败', '请稍后重试'); }
+  finally { togglingId.value = null; }
+};
+
+// ===== 上架商品弹窗 =====
+const showStallDialog = ref(false);
+
+const checkStall = async () => {
+  try {
+    const resp = await fetch(buildApiUrl('/api/stalls/onboarding/status'), { headers: authHeaders() });
+    const payload = await resp.json();
+    return !(payload.success && payload.data && payload.data.currentStatus === 'NONE');
+  } catch { return true; }
+};
+
+const showAddModal = ref(false);
+const addName = ref('');
+const addType = ref('小吃');
+const addPrice = ref<number | null>(null);
+const addStock = ref<number | null>(null);
+const addDesc = ref('');
+const addImagePreview = ref('');
+const addImageUrl = ref('');
+const addUploading = ref(false);
+const addSubmitting = ref(false);
+const addImageInput = ref<HTMLInputElement | null>(null);
+
+const addProductTypes = computed(() => {
+  const types = [...new Set(products.value.map(p => p.type).filter(Boolean))];
+  return types.length ? types : ['小吃', '饮品', '甜品', '手工饰品', '其他'];
+});
+
+const openAddModal = async () => {
+  const ok = await checkStall();
+  if (!ok) { showStallDialog.value = true; return; }
+  addName.value = ''; addType.value = addProductTypes.value[0]; addPrice.value = null;
+  addStock.value = null; addDesc.value = ''; addImagePreview.value = ''; addImageUrl.value = '';
+  showAddModal.value = true;
+};
+
+const triggerAddImage = () => addImageInput.value?.click();
+
+const onAddImageChange = async (e: Event) => {
+  const file = (e.target as HTMLInputElement).files?.[0];
+  if (!file) return;
+  if (file.size > 5 * 1024 * 1024) { showToast('error', '上传失败', '图片不能超过 5MB'); return; }
+  addImagePreview.value = URL.createObjectURL(file);
+  addUploading.value = true;
+  try {
+    const fd = new FormData(); fd.append('file', file);
+    const token = localStorage.getItem('stall_auth_token') || '';
+    const resp = await fetch(buildApiUrl('/api/common/upload'), { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd });
+    const r = await resp.json();
+    if (r.code === 200 || r.success) { addImageUrl.value = r.data; }
+    else throw new Error(r.message || '上传失败');
+  } catch (err: any) { showToast('error', '上传失败', err.message); addImagePreview.value = ''; }
+  finally { addUploading.value = false; if (addImageInput.value) addImageInput.value.value = ''; }
+};
+
+const submitAddProduct = async () => {
+  if (!addName.value.trim()) { showToast('error', '上架失败', '请输入商品名称'); return; }
+  const price = Number(addPrice.value || 0);
+  if (price <= 0) { showToast('error', '上架失败', '请输入有效价格'); return; }
+  const stock = Number(addStock.value || 0);
+  if (stock < 0) { showToast('error', '上架失败', '库存不能小于0'); return; }
+  if (!addImageUrl.value) { showToast('error', '上架失败', '请上传商品图片'); return; }
+
+  addSubmitting.value = true;
+  try {
+    const resp = await fetch(buildApiUrl('/api/products'), {
+      method: 'POST', headers: authHeaders(),
+      body: JSON.stringify({ name: addName.value.trim(), type: addType.value, price, stock, description: addDesc.value.trim() || null, imageUrls: [addImageUrl.value] }),
+    });
+    const payload = await resp.json();
+    if (!resp.ok || !payload.success) throw new Error(payload.message || '上架失败');
+    showAddModal.value = false;
+    showToast('success', '上架成功', addName.value.trim());
+    await fetchProducts();
+  } catch (err: any) { showToast('error', '上架失败', err.message); }
+  finally { addSubmitting.value = false; }
+};
+
+onMounted(() => { fetchBusiness(); fetchProducts(); });
+
+const productColors = ['bg-orange-50', 'bg-red-50', 'bg-amber-50', 'bg-emerald-50', 'bg-blue-50', 'bg-purple-50', 'bg-rose-50', 'bg-cyan-50'];
 </script>
 
 <template>
-  <div class="space-y-4 text-left sm:space-y-6">
-    <!-- KPI 概览 -->
-    <section class="grid grid-cols-4 gap-1 sm:gap-3 lg:gap-4">
-      <article
-        v-for="(kpi, i) in kpis"
-        :key="i"
-        class="group relative overflow-hidden rounded-[0.95rem] border border-white/80 bg-white p-2 shadow-[0_10px_24px_rgba(0,0,0,0.04)] transition-all hover:-translate-y-0.5 hover:shadow-[0_18px_40px_rgba(0,0,0,0.06)] sm:rounded-[1.5rem] sm:p-4 lg:rounded-[1.65rem]"
-      >
-        <div :class="['absolute inset-0 bg-gradient-to-br opacity-90', kpi.cardBg]"></div>
-        <div class="absolute inset-x-0 bottom-0 h-10 opacity-30 transition-opacity group-hover:opacity-50 sm:h-20">
-          <svg viewBox="0 0 50 40" class="h-full w-full">
-            <polyline
-              fill="none"
-              :stroke="kpi.chartColor"
-              stroke-width="2.5"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              :points="kpi.points"
-            />
-          </svg>
-        </div>
+  <div class="min-h-screen bg-[#fdfaf8] text-slate-900 font-sans space-y-5 sm:space-y-6 pb-8">
+    <!-- ===== 区块 1：顶部概览 + AI 助手 ===== -->
+    <section class="bg-gradient-to-br from-orange-50/50 to-amber-100/30 rounded-[32px] sm:rounded-[48px] p-5 sm:p-8 shadow-sm relative overflow-hidden flex flex-col lg:flex-row items-center gap-6 sm:gap-10">
+      <div class="absolute top-0 left-0 w-full h-full pointer-events-none overflow-hidden">
+        <div class="absolute -top-20 -left-20 w-80 h-80 bg-orange-200/20 blur-[100px] rounded-full" />
+        <div class="absolute top-40 right-20 w-64 h-64 bg-blue-100/30 blur-[80px] rounded-full" />
+      </div>
 
-        <div class="relative z-10 flex h-full min-h-[4.8rem] flex-col justify-start gap-1.5 sm:min-h-[9.8rem] sm:justify-between sm:gap-0">
-          <div class="flex items-start justify-between gap-1">
-            <div :class="['flex h-6 w-6 items-center justify-center rounded-[0.75rem] shadow-inner sm:h-10 sm:w-10 sm:rounded-[0.95rem]', kpi.color.replace('text-', 'bg-').replace('500', '50'), kpi.color]">
-              <component :is="kpi.icon" class="h-3 w-3 sm:h-5 sm:w-5" />
+      <div class="flex-1 z-10 w-full">
+        <h2 class="text-xl sm:text-2xl font-bold text-slate-800 flex items-center gap-2">今天生意 还不错哦！</h2>
+        <p class="text-slate-500 text-xs sm:text-sm mt-1">经营数据实时更新中</p>
+        <div class="mt-6 sm:mt-10">
+          <div class="flex items-baseline gap-2 sm:gap-3">
+            <span class="text-orange-500 text-xl sm:text-2xl font-black">¥</span>
+            <span class="text-3xl sm:text-5xl font-black text-slate-800 tracking-tighter">{{ todayRevenue.replace('¥', '') }}</span>
+            <div class="w-2 h-2 bg-green-500 rounded-full animate-bounce" />
+          </div>
+          <p class="text-slate-400 text-xs sm:text-sm font-bold tracking-widest uppercase mt-2">预计今日收入</p>
+        </div>
+        <div class="flex flex-wrap gap-3 sm:gap-4 mt-5 sm:mt-6">
+          <div class="px-4 sm:px-6 py-3 sm:py-4 rounded-[20px] sm:rounded-[28px] bg-white/40 backdrop-blur-md border border-white/60 shadow-sm flex flex-col gap-1 transition-all hover:bg-white/60 hover:shadow-md">
+            <div class="flex items-center gap-2">
+              <ShoppingBag class="w-4 h-4 text-orange-500" />
+              <span class="text-base sm:text-lg font-black text-slate-800">{{ todaySold }}</span>
             </div>
-            <div :class="['inline-flex items-center gap-0.5 rounded-full px-1 py-0.5 text-[6px] font-black sm:px-2 sm:py-1 sm:text-[9px]', kpi.trend.startsWith('+') ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600']">
-              <ArrowUp v-if="kpi.trend.startsWith('+')" class="h-1.5 w-1.5 sm:h-2.5 sm:w-2.5" />
-              <ArrowDown v-else class="h-1.5 w-1.5 sm:h-2.5 sm:w-2.5" />
-              {{ kpi.trend.replace('+', '').replace('-', '') }}
+            <span class="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-widest">售出商品</span>
+          </div>
+          <div class="px-4 sm:px-6 py-3 sm:py-4 rounded-[20px] sm:rounded-[28px] bg-white/40 backdrop-blur-md border border-white/60 shadow-sm flex flex-col gap-1 transition-all hover:bg-white/60 hover:shadow-md">
+            <div class="flex items-center gap-2">
+              <Store class="w-4 h-4 text-blue-500" />
+              <span class="text-base sm:text-lg font-black text-slate-800">{{ todayOrders }}</span>
             </div>
+            <span class="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-widest">订单数</span>
           </div>
-
-          <div class="space-y-0 text-left">
-            <p class="text-[7px] font-bold leading-tight tracking-tight text-stone-400 sm:text-[10px]">{{ kpi.title }}</p>
-            <h3 class="text-[0.9rem] font-black leading-none tracking-tight text-stone-900 sm:text-[1.7rem]">{{ kpi.value }}</h3>
-            <p class="text-[6px] font-bold text-stone-400 sm:text-[9px]">较昨日 <span :class="kpi.trend.startsWith('+') ? 'text-emerald-500' : 'text-rose-500'">{{ kpi.trend }}</span></p>
+          <div class="px-4 sm:px-6 py-3 sm:py-4 rounded-[20px] sm:rounded-[28px] bg-white/40 backdrop-blur-md border border-white/60 shadow-sm flex flex-col gap-1 transition-all hover:bg-white/60 hover:shadow-md">
+            <div class="flex items-center gap-2">
+              <TrendingUp class="w-4 h-4 text-purple-500" />
+              <span class="text-base sm:text-lg font-black text-slate-800">{{ conversion }}</span>
+            </div>
+            <span class="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-widest">转化率</span>
           </div>
         </div>
-      </article>
-    </section>
+      </div>
 
-    <!-- 收入趋势 -->
-    <section class="overflow-hidden rounded-[1.7rem] border border-stone-100 bg-white p-3.5 shadow-[0_18px_45px_rgba(0,0,0,0.04)] sm:rounded-[2.3rem] sm:p-5 md:p-6">
-      <div class="mb-3 flex flex-col gap-3 sm:mb-5 md:flex-row md:items-center md:justify-between">
-        <div class="space-y-1 text-left">
-          <div class="flex items-center gap-2">
-            <h3 class="text-base font-black tracking-tight text-stone-900 sm:text-xl">收入趋势分析</h3>
-            <span class="rounded-full bg-stone-100 px-2 py-0.5 text-[8px] font-black text-stone-400 sm:text-[9px]">●</span>
+      <div class="flex-1 lg:max-w-md relative z-10 w-full">
+        <div class="bg-white/60 backdrop-blur-xl border border-white/80 rounded-[32px] sm:rounded-[40px] p-5 sm:p-8 shadow-xl shadow-orange-100/20">
+          <div class="flex items-center gap-3 mb-4 sm:mb-5">
+            <span class="bg-green-100/80 text-green-700 text-[10px] sm:text-[11px] px-3 py-1 rounded-full font-black flex items-center gap-2 border border-green-200/50 backdrop-blur-md">
+              <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse" />智能管家在线
+            </span>
           </div>
-          <p class="text-[9px] font-bold uppercase tracking-[0.18em] text-stone-400 sm:text-[10px]">Revenue Forecast</p>
-        </div>
-
-        <div class="flex w-full items-center gap-1 rounded-[1.15rem] bg-stone-50 p-1 sm:w-auto sm:rounded-2xl">
-          <button
-            v-for="range in (['today', 'week', 'month'] as const)"
-            :key="range"
-            @click="timeRange = range"
-            :class="['flex-1 rounded-[0.9rem] px-2.5 py-2 text-[10px] font-black transition-all sm:flex-none sm:px-4', timeRange === range ? 'bg-orange-500 text-white shadow-lg shadow-orange-100' : 'text-stone-400 hover:text-stone-900']"
-          >
-            {{ range === 'today' ? '今日' : range === 'week' ? '本周' : '本月' }}
+          <div class="space-y-3 sm:space-y-4">
+            <template v-if="aiSuggestions.length">
+              <p v-for="(s, i) in aiSuggestions.slice(0, 2)" :key="i" class="text-sm text-slate-600 leading-relaxed font-medium">
+                <Lightbulb class="h-4 w-4 inline text-amber-500 mr-1" />{{ s.title }}：{{ s.description }}
+              </p>
+            </template>
+            <template v-else>
+              <p class="text-sm text-slate-600 leading-relaxed font-medium">根据近期营收趋势，系统正在分析最佳经营策略。</p>
+              <p class="text-xs text-slate-400 leading-relaxed">建议保持热销商品库存充足，关注晚间高峰时段。</p>
+            </template>
+          </div>
+          <button class="mt-5 sm:mt-8 w-full bg-orange-500 hover:bg-orange-600 text-white rounded-2xl py-3 sm:py-4 text-xs sm:text-sm font-black transition-all shadow-lg shadow-orange-400/40 hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2">
+            查收经营建议 <ChevronRight class="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
         </div>
       </div>
 
-      <div class="h-[220px] w-full sm:h-[285px]">
-        <VueApexCharts
-          type="area"
-          height="100%"
-          :options="revenueChartOptions"
-          :series="revenueSeries"
-        />
+      <div class="hidden xl:block w-36 sm:w-48 relative self-end">
+        <img :src="robotImage" alt="AI Robot" class="w-full object-contain drop-shadow-2xl translate-y-4 scale-125 hover:scale-[1.35] transition-transform duration-500" />
       </div>
     </section>
 
-    <!-- AI 建议 + 机器人 -->
-    <section class="relative overflow-hidden rounded-[1.7rem] border border-stone-100 bg-white p-3.5 pb-14 shadow-[0_18px_45px_rgba(0,0,0,0.04)] sm:rounded-[2.3rem] sm:p-5 sm:pb-5 md:p-6">
-      <div class="absolute inset-y-0 right-0 w-1/2 bg-[radial-gradient(circle_at_right,rgba(251,146,60,0.16),transparent_62%)]"></div>
-      <div class="absolute bottom-2 right-2 h-20 w-20 rounded-full bg-orange-100/80 blur-2xl sm:bottom-4 sm:right-4 sm:h-28 sm:w-28"></div>
-      <img
-        :src="robotImage"
-        alt="AI 机器人"
-        class="pointer-events-none absolute bottom-0 right-0 z-0 w-24 opacity-100 drop-shadow-[0_20px_30px_rgba(249,115,22,0.3)] sm:w-28 md:right-4 md:w-36 lg:w-40"
-      />
-
-      <div class="relative z-10 max-w-[calc(100%-4.75rem)] space-y-2.5 sm:max-w-[calc(100%-6.5rem)] sm:space-y-3 lg:max-w-[calc(100%-8rem)]">
-        <div class="flex items-start justify-between gap-2.5">
-          <div class="flex items-center gap-2">
-            <div class="flex h-8 w-8 items-center justify-center rounded-[0.95rem] bg-orange-50 text-orange-500 sm:h-10 sm:w-10 sm:rounded-2xl">
-              <Bot class="h-4 w-4 sm:h-5 sm:w-5" />
-            </div>
+    <!-- ===== 区块 2：收入趋势图 + 经营建议 ===== -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-5 sm:gap-6">
+      <div class="lg:col-span-2 bg-white/60 backdrop-blur-xl rounded-[32px] sm:rounded-[48px] p-5 sm:p-8 shadow-sm border border-blue-100/50">
+        <h2 class="text-base sm:text-lg font-semibold mb-5 sm:mb-8">今日收入趋势</h2>
+        <div class="h-[200px] sm:h-[260px] w-full">
+          <VueApexCharts v-if="revenueTrend.length" :key="chartKey" :options="chartOptions as any" :series="chartSeries" type="area" height="100%" />
+          <div v-else class="flex items-center justify-center h-full text-slate-300 text-sm">暂无趋势数据</div>
+        </div>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mt-5 sm:mt-8">
+          <div class="p-3 sm:p-4 rounded-2xl flex items-center gap-3 sm:gap-4 border border-transparent hover:border-slate-100 transition-all bg-blue-50/50">
+            <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-white flex items-center justify-center shadow-sm"><Store class="w-4 h-4 sm:w-5 sm:h-5 text-blue-500" /></div>
             <div>
-              <h4 class="text-[15px] font-black tracking-tight text-stone-900 sm:text-lg">AI 经营建议</h4>
-              <p class="text-[8px] font-bold uppercase tracking-[0.16em] text-stone-400 sm:text-[10px]">智能经营助手</p>
-            </div>
-          </div>
-          <span class="rounded-full bg-indigo-50 px-2 py-1 text-[8px] font-black text-indigo-500 sm:px-2.5 sm:text-[10px]">AI 推荐</span>
-        </div>
-
-        <div class="grid grid-cols-2 gap-2 sm:gap-2.5">
-          <article class="rounded-[1rem] border border-stone-100 bg-stone-50/80 p-2.5 shadow-sm sm:rounded-[1.25rem] sm:p-3">
-            <div class="flex items-start gap-2.5">
-              <div class="flex h-8 w-8 items-center justify-center rounded-[0.9rem] bg-white text-orange-500 shadow-sm sm:h-9 sm:w-9 sm:rounded-[1rem]">
-                <Clock class="h-4 w-4 sm:h-4.5 sm:w-4.5" />
-              </div>
-              <div class="min-w-0 space-y-1 text-left">
-                <p class="text-[8px] font-bold uppercase tracking-[0.14em] text-stone-400 sm:text-[9px]">最佳营业时段</p>
-                <h5 class="text-[13px] font-black leading-tight text-stone-900 sm:text-sm">15:00 - 21:00</h5>
-                <p class="text-[9px] font-bold leading-snug text-stone-400 sm:text-[10px]">建议主推套餐与第二杯半价活动。</p>
-              </div>
-            </div>
-          </article>
-
-          <article class="rounded-[1rem] border border-stone-100 bg-stone-50/80 p-2.5 shadow-sm sm:rounded-[1.25rem] sm:p-3">
-            <div class="flex items-start gap-2.5">
-              <div class="flex h-8 w-8 items-center justify-center rounded-[0.9rem] bg-white text-amber-500 shadow-sm sm:h-9 sm:w-9 sm:rounded-[1rem]">
-                <Lightbulb class="h-4 w-4 sm:h-4.5 sm:w-4.5" />
-              </div>
-              <div class="min-w-0 space-y-1 text-left">
-                <p class="text-[8px] font-bold uppercase tracking-[0.14em] text-stone-400 sm:text-[9px]">推荐动作</p>
-                <h5 class="text-[13px] font-black leading-tight text-stone-900 sm:text-sm">提升高客单曝光</h5>
-                <p class="text-[9px] font-bold leading-snug text-stone-400 sm:text-[10px]">爆款饮品前置，可提升傍晚转化。</p>
-              </div>
-            </div>
-          </article>
-        </div>
-      </div>
-    </section>
-
-    <!-- 热销 TOP 5 -->
-    <section class="overflow-hidden rounded-[1.7rem] border border-stone-100 bg-white p-3.5 shadow-[0_18px_45px_rgba(0,0,0,0.04)] sm:rounded-[2.3rem] sm:p-5 md:p-6">
-      <div class="mb-3 flex items-center justify-between gap-3 sm:mb-4">
-        <div class="flex items-center gap-2.5">
-          <div class="flex h-8 w-8 items-center justify-center rounded-[1rem] bg-amber-50 text-amber-500 sm:h-9 sm:w-9 sm:rounded-2xl">
-            <Trophy class="h-4 w-4 sm:h-4.5 sm:w-4.5" />
-          </div>
-          <div>
-            <h4 class="text-base font-black tracking-tight text-stone-900 sm:text-lg">热销单品 TOP 5</h4>
-            <p class="text-[9px] font-bold uppercase tracking-[0.18em] text-stone-400 sm:text-[10px]">热度实时更新</p>
-          </div>
-        </div>
-        <button class="hidden items-center gap-1 text-[10px] font-black text-stone-400 transition-colors hover:text-orange-500 sm:flex">
-          查看更多 <ChevronRight class="h-3.5 w-3.5" />
-        </button>
-      </div>
-
-      <div class="space-y-2.5 sm:space-y-3">
-        <article
-          v-for="(product, i) in topProducts"
-          :key="product.name"
-          class="group flex items-start gap-2.5 rounded-[1.2rem] border border-stone-100 bg-white p-2.5 transition-all hover:border-orange-100 hover:bg-orange-50/20 sm:items-center sm:gap-4 sm:rounded-[1.35rem] sm:p-4"
-        >
-          <div :class="['mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-black shadow-sm sm:mt-0 sm:h-7 sm:w-7 sm:text-[11px]', i === 0 ? 'bg-orange-400 text-white' : i === 1 ? 'bg-stone-200 text-stone-700' : i === 2 ? 'bg-orange-100 text-orange-600' : 'bg-stone-50 text-stone-400']">
-            {{ i + 1 }}
-          </div>
-          <div class="h-11 w-11 shrink-0 overflow-hidden rounded-[0.9rem] border border-stone-100 bg-stone-100 sm:h-14 sm:w-14 sm:rounded-xl">
-            <img :src="product.img" class="h-full w-full object-cover" :alt="product.name" />
-          </div>
-          <div class="min-w-0 flex-1">
-            <div class="flex items-start justify-between gap-3">
-              <div class="min-w-0">
-                <h5 class="truncate text-[13px] font-black text-stone-900 sm:text-base">{{ product.name }}</h5>
-                <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[9px] font-bold text-stone-400 sm:text-[10px]">
-                  <span>销量 {{ product.sales }}</span>
-                  <span>CTR {{ product.ctr }}</span>
-                </div>
-              </div>
-              <div class="shrink-0 text-right">
-                <p class="text-[13px] font-black text-stone-900 sm:text-base">¥{{ product.revenue }}</p>
-                <span :class="['mt-1 inline-flex rounded-full px-2 py-0.5 text-[9px] font-black', product.trend.startsWith('+') ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600']">
-                  {{ product.trend }}
+              <p class="text-[9px] sm:text-[10px] text-slate-400 font-medium uppercase tracking-wider">昨日营收</p>
+              <div class="flex items-center gap-1">
+                <p class="text-xs sm:text-sm font-bold text-slate-700">{{ yesterdayRevenueVal }}</p>
+                <span :class="['flex items-center text-[10px] font-bold', revenueTrendUp ? 'text-emerald-500' : 'text-rose-500']">
+                  <ArrowUpRight v-if="revenueTrendUp" class="w-3 h-3" /><ArrowDown v-else class="w-3 h-3" />{{ revenueTrendPct }}
                 </span>
               </div>
             </div>
           </div>
-        </article>
+          <div class="p-3 sm:p-4 rounded-2xl flex items-center gap-3 sm:gap-4 border border-transparent hover:border-slate-100 transition-all bg-orange-50/50">
+            <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-white flex items-center justify-center shadow-sm"><Bell class="w-4 h-4 sm:w-5 sm:h-5 text-orange-500" /></div>
+            <div>
+              <p class="text-[9px] sm:text-[10px] text-slate-400 font-medium uppercase tracking-wider">售出商品</p>
+              <div class="flex items-center gap-1">
+                <p class="text-xs sm:text-sm font-bold text-slate-700">{{ yesterdaySoldVal }}</p>
+                <span :class="['flex items-center text-[10px] font-bold', soldTrendUp ? 'text-emerald-500' : 'text-rose-500']">
+                  <ArrowUpRight v-if="soldTrendUp" class="w-3 h-3" /><ArrowDown v-else class="w-3 h-3" />{{ soldTrendPct }}
+                </span>
+              </div>
+            </div>
+          </div>
+          <div class="p-3 sm:p-4 rounded-2xl flex items-center gap-3 sm:gap-4 border border-transparent hover:border-slate-100 transition-all bg-green-50/50">
+            <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-white flex items-center justify-center shadow-sm"><TrendingUp class="w-4 h-4 sm:w-5 sm:h-5 text-green-500" /></div>
+            <div>
+              <p class="text-[9px] sm:text-[10px] text-slate-400 font-medium uppercase tracking-wider">订单数</p>
+              <div class="flex items-center gap-1">
+                <p class="text-xs sm:text-sm font-bold text-slate-700">{{ yesterdayOrdersVal }}</p>
+                <span :class="['flex items-center text-[10px] font-bold', ordersTrendUp ? 'text-emerald-500' : 'text-rose-500']">
+                  <ArrowUpRight v-if="ordersTrendUp" class="w-3 h-3" /><ArrowDown v-else class="w-3 h-3" />{{ ordersTrendPct }}
+                </span>
+              </div>
+            </div>
+          </div>
+          <div class="p-3 sm:p-4 rounded-2xl flex items-center gap-3 sm:gap-4 border border-transparent hover:border-slate-100 transition-all bg-orange-50/50">
+            <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-white flex items-center justify-center shadow-sm"><Timer class="w-4 h-4 sm:w-5 sm:h-5 text-orange-500" /></div>
+            <div>
+              <p class="text-[9px] sm:text-[10px] text-slate-400 font-medium uppercase tracking-wider">预计高峰</p>
+              <p class="text-xs sm:text-sm font-bold text-slate-700">18:00</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white/60 backdrop-blur-xl rounded-[32px] sm:rounded-[48px] p-5 sm:p-8 shadow-sm border border-indigo-100/50">
+        <h2 class="text-base sm:text-lg font-semibold flex items-center gap-2 mb-5 sm:mb-6">今日经营建议</h2>
+        <div class="space-y-3 sm:space-y-4">
+          <template v-if="aiSuggestions.length">
+            <div v-for="(item, i) in aiSuggestions.slice(0, 4)" :key="i"
+              class="group flex items-center justify-between p-3 rounded-2xl hover:bg-slate-50 transition-all border border-transparent hover:border-slate-100"
+            >
+              <div class="flex items-center gap-3">
+                <div :class="['w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center shadow-sm',
+                  i === 0 ? 'bg-blue-50 text-blue-500' : i === 1 ? 'bg-orange-50 text-orange-500' : i === 2 ? 'bg-purple-50 text-purple-500' : 'bg-red-50 text-red-500']">
+                  <component :is="i === 0 ? Users : i === 1 ? TrendingUp : i === 2 ? ShoppingBag : Bell" class="w-4 h-4 sm:w-5 sm:h-5" />
+                </div>
+                <div>
+                  <h4 class="text-xs sm:text-sm font-bold text-slate-800 line-clamp-1">{{ item.title }}</h4>
+                  <p class="text-[10px] text-slate-400 mt-0.5 line-clamp-1">{{ item.description }}</p>
+                </div>
+              </div>
+              <span :class="['text-[10px] px-2 py-0.5 rounded-md font-bold shrink-0',
+                i === 0 ? 'bg-green-50 text-green-600' : i === 1 ? 'bg-orange-50 text-orange-600' : i === 2 ? 'bg-purple-50 text-purple-600' : 'bg-blue-50 text-blue-600']">
+                {{ item.value || '建议' }}
+              </span>
+            </div>
+          </template>
+          <template v-else>
+            <div v-for="(item, i) in [
+              { title: '关注热销品库存', desc: '确保热销商品库存充足', status: '需关注', type: 0 },
+              { title: '午高峰客流良好', desc: '转化率较高，建议保持', status: '良好', type: 1 },
+              { title: '建议开启促销', desc: '可提升晚间转化率', status: '需处理', type: 2 },
+              { title: '预计晚高峰回流', desc: '建议提前备货', status: '进行中', type: 3 },
+            ]" :key="i"
+              class="group flex items-center justify-between p-3 rounded-2xl hover:bg-slate-50 transition-all border border-transparent hover:border-slate-100"
+            >
+              <div class="flex items-center gap-3">
+                <div :class="['w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center shadow-sm',
+                  item.type === 0 ? 'bg-blue-50 text-blue-500' : item.type === 1 ? 'bg-orange-50 text-orange-500' : item.type === 2 ? 'bg-purple-50 text-purple-500' : 'bg-red-50 text-red-500']">
+                  <component :is="item.type === 0 ? Users : item.type === 1 ? TrendingUp : item.type === 2 ? ShoppingBag : Bell" class="w-4 h-4 sm:w-5 sm:h-5" />
+                </div>
+                <div>
+                  <h4 class="text-xs sm:text-sm font-bold text-slate-800">{{ item.title }}</h4>
+                  <p class="text-[10px] text-slate-400 mt-0.5">{{ item.desc }}</p>
+                </div>
+              </div>
+              <span :class="['text-[10px] px-2 py-0.5 rounded-md font-bold shrink-0',
+                item.type === 0 ? 'bg-green-50 text-green-600' : item.type === 1 ? 'bg-orange-50 text-orange-600' : item.type === 2 ? 'bg-purple-50 text-purple-600' : 'bg-blue-50 text-blue-600']">
+                {{ item.status }}
+              </span>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 区块 3：热销 TOP 5 + 实时动态 ===== -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6">
+      <div class="bg-[#fff9f5]/60 backdrop-blur-xl rounded-[32px] sm:rounded-[48px] p-5 sm:p-8 shadow-sm border border-orange-100/50">
+        <div class="flex justify-between items-center mb-5 sm:mb-6">
+          <h2 class="text-base sm:text-lg font-semibold">热销商品 TOP 5</h2>
+          <span class="flex items-center gap-1 text-xs text-green-500 font-bold"><span class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />实时更新</span>
+        </div>
+        <div class="space-y-3 sm:space-y-4">
+          <template v-if="topProducts.length">
+            <div v-for="(p, i) in topProducts.slice(0, 5)" :key="i"
+              class="flex items-center justify-between gap-3 p-2 rounded-2xl hover:bg-slate-50 transition-all">
+              <div class="flex items-center gap-3 sm:gap-4">
+                <div :class="['w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center font-black text-xs shadow-sm',
+                  i === 0 ? 'bg-orange-500 text-white' : 'bg-slate-100 text-slate-400']">{{ i + 1 }}</div>
+                <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-slate-50 flex items-center justify-center overflow-hidden shadow-inner">
+                  <img v-if="p.imageUrl" :src="p.imageUrl" class="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  <ShoppingBag v-else class="w-5 h-5 text-slate-300" />
+                </div>
+                <div>
+                  <h4 class="text-xs sm:text-sm font-bold text-slate-800 line-clamp-1">{{ p.name }}</h4>
+                  <p class="text-[10px] text-slate-400 mt-0.5">今日销量 {{ p.sales }} 件</p>
+                </div>
+              </div>
+              <div class="text-right shrink-0">
+                <p class="text-xs sm:text-sm font-black">¥{{ p.revenue }}</p>
+                <p class="text-[10px] text-red-500 font-black flex items-center justify-end gap-1">
+                  <ArrowUpRight class="w-3 h-3" />{{ p.trend }}
+                </p>
+              </div>
+            </div>
+          </template>
+          <div v-else class="text-center py-8 text-slate-300 text-sm">暂无销售数据</div>
+        </div>
+      </div>
+
+      <div class="bg-[#fcfcff]/60 backdrop-blur-xl rounded-[32px] sm:rounded-[48px] p-5 sm:p-8 shadow-sm border border-slate-200/50">
+        <div class="flex justify-between items-center mb-5 sm:mb-6">
+          <h2 class="text-base sm:text-lg font-semibold">实时动态</h2>
+          <span class="flex items-center gap-1 text-xs text-green-500 font-bold"><span class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />在线</span>
+        </div>
+        <div class="space-y-5 sm:space-y-6">
+          <div v-for="(item, i) in feedItems" :key="i" class="flex gap-3 sm:gap-4 group">
+            <div class="flex flex-col items-center">
+              <div :class="['w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center shadow-sm z-10 bg-white border border-slate-100',
+                item.type === 'order' ? 'text-orange-500' : item.type === 'user' ? 'text-blue-500' : 'text-green-500']">
+                <component :is="item.type === 'order' ? ShoppingBag : item.type === 'user' ? Users : CheckCircle2" class="w-4 h-4 sm:w-5 sm:h-5" />
+              </div>
+            </div>
+            <div class="flex-1 pb-3 sm:pb-4">
+              <div class="flex justify-between items-start">
+                <div>
+                  <h4 class="text-xs sm:text-sm font-bold text-slate-800">{{ item.content }}</h4>
+                  <p class="text-[10px] text-slate-400 mt-1">系统 · {{ item.time }}</p>
+                </div>
+                <span v-if="item.amount" class="text-xs sm:text-sm font-bold text-slate-800">{{ item.amount }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 区块 4：商品管理 ===== -->
+    <section class="bg-white/80 backdrop-blur-xl rounded-[32px] sm:rounded-[48px] p-5 sm:p-10 shadow-sm border border-slate-100">
+      <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 sm:gap-6 mb-6 sm:mb-10">
+        <div>
+          <h2 class="text-xl sm:text-2xl font-black text-slate-800 flex items-center gap-3">
+            商品管理
+            <span class="h-4 w-px bg-slate-200 hidden md:block" />
+            <span class="text-xs font-bold text-slate-400">高效管理实时库存与售价</span>
+          </h2>
+        </div>
+        <div class="flex items-center gap-3 sm:gap-4">
+          <button
+            @click="emit('view-change', 'manualOrder')"
+            class="bg-slate-900 hover:bg-slate-800 text-white px-5 sm:px-8 py-2.5 sm:py-3 rounded-2xl text-xs sm:text-sm font-bold transition-all shadow-xl shadow-slate-200 flex items-center gap-2 active:scale-95"
+          >
+            手动点单
+          </button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 sm:gap-8">
+        <div v-for="(p, i) in products" :key="p.id"
+          class="group bg-white rounded-[24px] sm:rounded-[32px] p-4 sm:p-5 border border-slate-50 hover:border-orange-200 hover:shadow-2xl hover:shadow-orange-100/50 transition-all relative"
+        >
+          <span v-if="p.tag === '热销'" class="absolute -top-2 sm:-top-3 left-4 sm:left-6 bg-red-500 text-white text-[9px] sm:text-[10px] px-2 sm:px-3 py-0.5 sm:py-1 rounded-full font-black shadow-lg z-10">HOT</span>
+          <div :class="['aspect-square rounded-[20px] sm:rounded-3xl flex items-center justify-center mb-4 sm:mb-5 shadow-inner group-hover:scale-110 transition-transform duration-500 overflow-hidden', productColors[i % productColors.length]]">
+            <img :src="p.img" :alt="p.name" class="w-full h-full object-cover" referrerPolicy="no-referrer" />
+          </div>
+          <h4 class="text-xs sm:text-sm font-black text-slate-800 truncate mb-1 sm:mb-1.5">{{ p.name }}</h4>
+          <div class="flex items-center justify-between mt-2 sm:mt-3">
+            <div>
+              <p class="text-sm sm:text-base font-black text-slate-900 tracking-tight">¥{{ p.price }}</p>
+              <p v-if="p.stock > 0" class="text-[9px] sm:text-[10px] font-bold text-slate-400 mt-0.5">剩余 {{ p.stock }} 件</p>
+              <p v-else class="text-[9px] sm:text-[10px] font-bold text-red-500 mt-0.5">库存不足</p>
+            </div>
+            <div class="flex gap-2">
+              <div
+                @click.stop="toggleProduct(p)"
+                :class="['w-9 sm:w-10 h-5 rounded-full relative cursor-pointer transition-colors shadow-[inset_0_2px_4px_rgba(0,0,0,0.1)]',
+                  p.active ? 'bg-green-500' : 'bg-slate-300']"
+              >
+                <div :class="['absolute top-1 w-3 h-3 bg-white rounded-full shadow-sm transition-all duration-200',
+                  p.active ? 'right-1' : 'left-1']" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <button
+          @click="openAddModal"
+          class="group border-2 border-dashed border-slate-100 rounded-[24px] sm:rounded-[32px] p-4 sm:p-5 flex flex-col items-center justify-center gap-3 sm:gap-4 hover:border-orange-200 hover:bg-orange-50/10 transition-all duration-300 min-h-[200px]"
+        >
+          <div class="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-orange-100 transition-colors duration-500">
+            <Plus class="w-5 h-5 sm:w-6 sm:h-6 text-slate-300 group-hover:text-orange-500 transform group-hover:rotate-90 transition-transform duration-500" />
+          </div>
+          <span class="text-xs font-black text-slate-400 group-hover:text-orange-600 tracking-widest uppercase">上架商品</span>
+        </button>
       </div>
     </section>
 
-    <!-- 分时客流 -->
-    <section class="overflow-hidden rounded-[1.7rem] border border-stone-100 bg-white p-3.5 shadow-[0_18px_45px_rgba(0,0,0,0.04)] sm:rounded-[2.3rem] sm:p-5 md:p-6">
-      <div class="mb-3 flex items-center justify-between gap-3 sm:mb-4">
-        <div>
-          <h3 class="text-base font-black tracking-tight text-stone-900 sm:text-xl">分时段客流分布</h3>
-          <p class="mt-1 text-[9px] font-bold uppercase tracking-[0.18em] text-stone-400 sm:text-[10px]">Traffic Analysis</p>
+    <!-- ===== 未申请摊位提示弹窗 ===== -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="showStallDialog" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" @click.self="showStallDialog = false">
+          <div class="w-full max-w-sm rounded-[28px] bg-white shadow-2xl p-6 text-center">
+            <Store class="mx-auto h-10 w-10 text-amber-400 mb-3" />
+            <h3 class="text-lg font-black text-stone-800 mb-2">请先申请摊位</h3>
+            <p class="text-sm text-stone-500 mb-5">您还没有申请摊位，无法上架商品。是否前往申请摊位页面？</p>
+            <div class="flex gap-3">
+              <button @click="showStallDialog = false" class="flex-1 rounded-xl border border-stone-200 py-2.5 text-sm font-bold text-stone-500 hover:bg-stone-50">取消</button>
+              <button @click="showStallDialog = false; emit('navigate-stall')" class="flex-1 rounded-xl bg-amber-500 py-2.5 text-sm font-black text-white hover:bg-amber-600 transition-colors">前往申请摊位</button>
+            </div>
+          </div>
         </div>
-        <div class="flex h-9 w-9 items-center justify-center rounded-[1rem] bg-stone-50 text-stone-300 sm:h-10 sm:w-10 sm:rounded-2xl">
-          <Filter class="h-4 w-4 sm:h-4.5 sm:w-4.5" />
+      </Transition>
+    </Teleport>
+
+    <!-- ===== 上架商品弹窗 ===== -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="showAddModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" @click.self="showAddModal = false">
+          <div class="w-full max-w-lg rounded-[28px] bg-white shadow-2xl p-6 max-h-[90vh] overflow-y-auto">
+            <div class="flex items-center justify-between mb-5">
+              <h3 class="text-lg font-black text-slate-800">上架商品</h3>
+              <button @click="showAddModal = false" class="rounded-xl p-2 hover:bg-slate-100"><X class="h-4 w-4 text-slate-400" /></button>
+            </div>
+
+            <div class="space-y-4">
+              <!-- 图片上传 -->
+              <div>
+                <label class="text-xs font-bold text-slate-500 mb-1.5 block">商品图片 <span class="text-red-400">*</span></label>
+                <input ref="addImageInput" type="file" accept="image/*" class="hidden" @change="onAddImageChange" />
+                <div @click="triggerAddImage" class="cursor-pointer rounded-xl border-2 border-dashed border-slate-200 p-4 text-center hover:border-amber-300 transition-colors" :class="addImagePreview ? 'border-emerald-200 bg-emerald-50/30' : 'bg-slate-50/50'">
+                  <template v-if="addUploading">
+                    <div class="h-6 w-6 mx-auto animate-spin rounded-full border-2 border-amber-500 border-t-transparent" />
+                    <p class="mt-2 text-[10px] font-bold text-slate-500">上传中...</p>
+                  </template>
+                  <template v-else-if="addImagePreview">
+                    <img :src="addImagePreview" class="mx-auto h-32 object-cover rounded-lg" />
+                    <p class="mt-1 text-[10px] font-bold text-emerald-600">已上传，点击更换</p>
+                  </template>
+                  <template v-else>
+                    <UploadCloud class="mx-auto h-6 w-6 text-slate-300" />
+                    <p class="mt-1 text-xs font-bold text-slate-500">点击上传商品图片</p>
+                    <p class="text-[10px] text-slate-400">JPG/PNG，不超过 5MB</p>
+                  </template>
+                </div>
+              </div>
+
+              <!-- 名称 -->
+              <div>
+                <label class="text-xs font-bold text-slate-500 mb-1.5 block">商品名称 <span class="text-red-400">*</span></label>
+                <input v-model="addName" maxlength="20" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-800 outline-none focus:border-amber-300" placeholder="请输入商品名称" />
+              </div>
+
+              <!-- 分类 + 价格 + 库存 -->
+              <div class="grid grid-cols-3 gap-3">
+                <div>
+                  <label class="text-xs font-bold text-slate-500 mb-1.5 block">分类</label>
+                  <select v-model="addType" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-800 outline-none focus:border-amber-300 bg-white">
+                    <option v-for="t in addProductTypes" :key="t" :value="t">{{ t }}</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="text-xs font-bold text-slate-500 mb-1.5 block">单价 <span class="text-red-400">*</span></label>
+                  <input v-model.number="addPrice" type="number" min="1" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-800 outline-none focus:border-amber-300" placeholder="¥" />
+                </div>
+                <div>
+                  <label class="text-xs font-bold text-slate-500 mb-1.5 block">库存</label>
+                  <input v-model.number="addStock" type="number" min="0" class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-800 outline-none focus:border-amber-300" placeholder="0" />
+                </div>
+              </div>
+
+              <!-- 描述 -->
+              <div>
+                <label class="text-xs font-bold text-slate-500 mb-1.5 block">商品描述</label>
+                <textarea v-model="addDesc" rows="2" maxlength="200" class="w-full resize-none rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-800 outline-none focus:border-amber-300" placeholder="简单描述商品特色..." />
+                <p class="text-[10px] text-slate-400 mt-1">{{ addDesc.length }}/200</p>
+              </div>
+            </div>
+
+            <div class="mt-5 flex gap-3">
+              <button @click="showAddModal = false" class="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-bold text-slate-500 hover:bg-slate-50">取消</button>
+              <button @click="submitAddProduct" :disabled="addSubmitting" class="flex-1 rounded-xl bg-orange-500 py-2.5 text-sm font-black text-white hover:bg-orange-600 transition-colors disabled:opacity-60 flex items-center justify-center gap-2">
+                <Send class="h-3.5 w-3.5" />{{ addSubmitting ? '提交中...' : '确认上架' }}
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
-      <div class="h-[205px] w-full sm:h-64">
-        <VueApexCharts
-          type="bar"
-          height="100%"
-          :options="trafficChartOptions"
-          :series="trafficSeries"
-        />
-      </div>
-    </section>
+      </Transition>
+    </Teleport>
   </div>
 </template>

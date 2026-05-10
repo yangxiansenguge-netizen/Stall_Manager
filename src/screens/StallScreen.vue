@@ -23,6 +23,7 @@ import {
   Map as MapIcon
 } from 'lucide-vue-next';
 import { buildApiUrl } from '../utils/api';
+import { showToast } from '../composables/useToast';
 
 const userStatus = ref<'none' | 'pending' | 'active'>('none');
 
@@ -39,70 +40,46 @@ interface ApiResponse<T> {
 }
 
 interface AuthSession {
-  stallName?: string;
   phone?: string;
 }
 
 
 
-const NIGHT_START_HOUR = 18;
-const NIGHT_END_HOUR = 23;
-const MIN_APPLY_GAP_HOURS = 6;
-
-const toLocalDatetimeInputValue = (date: Date) => {
-  const offset = date.getTimezoneOffset();
-  const local = new Date(date.getTime() - offset * 60 * 1000);
-  return local.toISOString().slice(0, 16);
-};
-
-const getNextNightStart = () => {
-  const minDate = new Date(Date.now() + MIN_APPLY_GAP_HOURS * 60 * 60 * 1000);
-  const candidate = new Date(minDate);
-
-  if (candidate.getHours() < NIGHT_START_HOUR) {
-    candidate.setHours(NIGHT_START_HOUR, 0, 0, 0);
-    return candidate;
-  }
-
-  if (candidate.getHours() > NIGHT_END_HOUR) {
-    candidate.setDate(candidate.getDate() + 1);
-    candidate.setHours(NIGHT_START_HOUR, 0, 0, 0);
-    return candidate;
-  }
-
-  return candidate;
-};
-
-const addHours = (timeStr: string, hours: number) => {
-  const date = new Date(timeStr);
-  if (Number.isNaN(date.getTime())) {
-    return toLocalDatetimeInputValue(getNextNightStart());
-  }
-  date.setHours(date.getHours() + hours);
-  return toLocalDatetimeInputValue(date);
-};
-
-const isNightTime = (date: Date) => {
-  const hour = date.getHours();
-  return hour >= NIGHT_START_HOUR && hour <= NIGHT_END_HOUR;
-};
-
 const selectedAreaName = ref('文化广场 · 默认区域');
 const selectedCategoryName = ref('小吃');
 const stallNameInput = ref('');
-const plannedStartTime = ref(toLocalDatetimeInputValue(getNextNightStart()));
-const plannedEndTime = ref(addHours(plannedStartTime.value, 2));
-const displayImageName = ref('经营展示图.png');
+const durationDays = ref(7);
+const isCustomDuration = ref(false);
+const customDurationInput = ref('');
+const businessImageUrl = ref('');
+const businessImagePreview = ref('');
 const applicationNote = ref('');
 const selectedCoordinate = ref({ latitude: 31.2304, longitude: 121.4737 });
 const submittingApply = ref(false);
-const applyError = ref('');
-const applySuccess = ref('');
+const formErrors = ref<Record<string, string>>({});
 
-const minimumAllowedDateTimeInput = computed(() => {
-  const minDate = new Date(Date.now() + MIN_APPLY_GAP_HOURS * 60 * 60 * 1000);
-  return toLocalDatetimeInputValue(minDate);
-});
+const validateApplyForm = (): boolean => {
+  const errors: Record<string, string> = {};
+  if (!stallNameInput.value.trim()) errors.stallName = '请输入摊位名称';
+  if (!selectedAreaName.value.trim()) errors.areaName = '请选择经营区域';
+  if (!selectedCategoryName.value.trim()) errors.categoryName = '请选择经营品类';
+  if (!businessImageUrl.value) errors.businessImageUrl = '请上传经营图';
+
+  const sessionRaw = localStorage.getItem('stall_auth_session');
+  const session: AuthSession = sessionRaw ? JSON.parse(sessionRaw) : {};
+  const phone = session.phone || '';
+  if (!phone || !/^\d{11}$/.test(phone)) errors.contactPhone = '联系电话无效，请重新登录';
+
+  formErrors.value = errors;
+  return Object.keys(errors).length === 0;
+};
+
+const setDuration = (days: number) => {
+  durationDays.value = days;
+  isCustomDuration.value = false;
+  customDurationInput.value = '';
+  if (formErrors.value.plannedStartTime) delete formErrors.value.plannedStartTime;
+};
 
 const categoryOptions = ['小吃', '手工饰品', '饮品', '作品', '其他'];
 
@@ -183,63 +160,26 @@ const handleApply = () => {
   const sessionRaw = localStorage.getItem('stall_auth_session');
   const session: AuthSession = sessionRaw ? JSON.parse(sessionRaw) : {};
   if (!stallNameInput.value.trim()) {
-    stallNameInput.value = (session.stallName || '').trim();
+    stallNameInput.value = '';
   }
   showApplyModal.value = true;
-  applyError.value = '';
   updateViewport();
 };
 
 const submitApply = async () => {
-  applyError.value = '';
-  applySuccess.value = '';
+  if (!validateApplyForm()) {
+    showToast('error', '提交失败', '请完善所有必填信息');
+    return;
+  }
 
   const stallName = stallNameInput.value.trim();
-  if (!stallName) {
-    applyError.value = '请输入摊位名称';
-    return;
-  }
-
-  if (!plannedStartTime.value || !plannedEndTime.value) {
-    applyError.value = '请完整选择申请时间';
-    return;
-  }
-
-  const startDate = new Date(plannedStartTime.value);
-  const endDate = new Date(plannedEndTime.value);
-  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
-    applyError.value = '申请时间格式不正确';
-    return;
-  }
-
-  const minDate = new Date(Date.now() + MIN_APPLY_GAP_HOURS * 60 * 60 * 1000);
-  if (startDate.getTime() < minDate.getTime()) {
-    applyError.value = `开始时间需至少晚于当前 ${MIN_APPLY_GAP_HOURS} 小时`;
-    return;
-  }
-
-  if (!isNightTime(startDate) || !isNightTime(endDate)) {
-    applyError.value = '仅支持夜间摆摊时间（18:00-23:59）';
-    return;
-  }
-
-  if (endDate.getTime() <= startDate.getTime()) {
-    applyError.value = '结束时间必须晚于开始时间';
-    return;
-  }
+  const dur = isCustomDuration.value ? parseInt(customDurationInput.value) || 7 : durationDays.value;
 
   submittingApply.value = true;
   try {
     const authToken = localStorage.getItem('stall_auth_token') || '';
     const sessionRaw = localStorage.getItem('stall_auth_session');
     const session: AuthSession = sessionRaw ? JSON.parse(sessionRaw) : {};
-
-    const mergedNote = [
-      applicationNote.value.trim(),
-      `申请时段：${plannedStartTime.value.replace('T', ' ')} - ${plannedEndTime.value.replace('T', ' ')}`
-    ]
-      .filter(Boolean)
-      .join('；');
 
     const response = await fetch(buildApiUrl('/api/stalls/onboarding/applications'), {
 
@@ -253,15 +193,13 @@ const submitApply = async () => {
         contactPhone: session.phone || '',
         areaName: selectedAreaName.value,
         categoryName: selectedCategoryName.value,
-        plannedStartTime: startDate.toISOString().slice(0, 19),
+        durationDays: dur,
         locationLatitude: selectedCoordinate.value.latitude,
         locationLongitude: selectedCoordinate.value.longitude,
-        displayImageName: displayImageName.value.trim() || '经营展示图.png',
-        note: mergedNote
+        businessImageUrl: businessImageUrl.value,
+        note: applicationNote.value.trim() || null
       })
     });
-
-   
 
     const payload = (await response.json()) as ApiResponse<{ applicationId: string }>;
     if (!response.ok || !payload.success) {
@@ -269,11 +207,10 @@ const submitApply = async () => {
     }
 
     userStatus.value = 'active';
-
-    applySuccess.value = `提交成功：${payload.data?.applicationId || ''}`;
+    showToast('success', '申请成功', `申请编号：${payload.data?.applicationId || ''}`);
     showApplyModal.value = false;
   } catch (error) {
-    applyError.value = error instanceof Error ? error.message : '提交申请失败';
+    showToast('error', '提交失败', error instanceof Error ? error.message : '提交申请失败');
   } finally {
     submittingApply.value = false;
   }
@@ -283,7 +220,6 @@ const submitApply = async () => {
 // --- 新增上传相关的状态 ---
 const fileInputRef = ref<HTMLInputElement | null>(null);
 const isUploading = ref(false);
-const uploadProgress = ref(0);
 
 // --- 新增 OSS 上传逻辑 ---
 const triggerUpload = () => {
@@ -295,41 +231,43 @@ const handleFileChange = async (event: Event) => {
   const file = target.files?.[0];
   if (!file) return;
 
-  // 1. 基础校验
   if (file.size > 5 * 1024 * 1024) {
-    applyError.value = '文件大小不能超过 5MB';
+    showToast('error', '上传失败', '文件大小不能超过 5MB');
     return;
   }
+
+  // 本地预览
+  businessImagePreview.value = URL.createObjectURL(file);
 
   const formData = new FormData();
   formData.append('file', file);
 
   isUploading.value = true;
-  applyError.value = '';
-  
+
   try {
-    // 2. 调用你之前测试成功的 OSS 上传接口
+    const authToken = localStorage.getItem('stall_auth_token') || '';
     const response = await fetch(buildApiUrl('/api/common/upload'), {
       method: 'POST',
+      headers: { Authorization: `Bearer ${authToken}` },
       body: formData,
-      // 注意：如果是跨域请求且后端没配跨域，这里可能需要处理
     });
 
     const result = await response.json();
 
     if (result.code === 200 || result.success) {
-      // 3. 将返回的 OSS 链接保存到 displayImageName (或你后端接收图片的字段)
-      displayImageName.value = result.data; 
-      applySuccess.value = '图片上传成功';
+      businessImageUrl.value = result.data;
+      showToast('success', '上传成功', '经营图片已上传');
+      if (formErrors.value.businessImageUrl) {
+        delete formErrors.value.businessImageUrl;
+      }
     } else {
       throw new Error(result.message || '上传失败');
     }
   } catch (error) {
-    applyError.value = error instanceof Error ? error.message : '图片上传失败，请重试';
-    console.error('Upload Error:', error);
+    showToast('error', '上传失败', error instanceof Error ? error.message : '图片上传失败，请重试');
+    businessImagePreview.value = '';
   } finally {
     isUploading.value = false;
-    // 清除 input 值，确保同一张图能重复触发上传
     if (fileInputRef.value) fileInputRef.value.value = '';
   }
 };
@@ -686,114 +624,97 @@ const handleFileChange = async (event: Event) => {
                     </div>
                   </section>
 
-                  <section class="rounded-2xl border border-amber-100/70 bg-white p-3">
+                  <section class="rounded-2xl border border-amber-100/70 bg-white p-3" :class="{ 'border-red-300': formErrors.stallName }">
                     <div class="mb-2 flex items-center gap-2">
                       <span class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-black text-white">02</span>
-                      <h5 class="text-sm font-black text-stone-900">摊位名称</h5>
+                      <h5 class="text-sm font-black text-stone-900">摊位名称 <span class="text-red-400">*</span></h5>
                     </div>
                     <input
                       v-model="stallNameInput"
                       maxlength="20"
                       placeholder="请输入摊位名称（2-20个字）"
-                      class="w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm font-semibold text-stone-700 outline-none focus:border-amber-300"
+                      class="w-full rounded-xl border bg-white px-3 py-2.5 text-sm font-semibold text-stone-700 outline-none focus:border-amber-300"
+                      :class="formErrors.stallName ? 'border-red-300' : 'border-stone-200'"
+                      @input="() => { if (formErrors.stallName && stallNameInput.trim()) delete formErrors.stallName; }"
                     />
+                    <p v-if="formErrors.stallName" class="mt-1 text-xs font-bold text-red-500">{{ formErrors.stallName }}</p>
                   </section>
 
-                  <section class="rounded-2xl border border-amber-100/70 bg-white p-3">
+                  <section class="rounded-2xl border border-amber-100/70 bg-white p-3" :class="{ 'border-red-300': formErrors.categoryName }">
                     <div class="mb-2 flex items-center gap-2">
                       <span class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-black text-white">03</span>
-                      <h5 class="text-sm font-black text-stone-900">经营类目</h5>
+                      <h5 class="text-sm font-black text-stone-900">经营类目 <span class="text-red-400">*</span></h5>
                     </div>
                     <div class="flex flex-wrap gap-2">
                       <button
                         v-for="item in categoryOptions"
                         :key="item"
                         type="button"
-                        @click="selectedCategoryName = item"
+                        @click="selectedCategoryName = item; if (formErrors.categoryName) delete formErrors.categoryName;"
                         :class="['rounded-xl border px-3 py-2 text-xs font-bold', selectedCategoryName === item ? 'border-amber-400 bg-amber-50 text-amber-700' : 'border-stone-200 bg-white text-stone-500']"
                       >
                         {{ item }}
                       </button>
                     </div>
+                    <p v-if="formErrors.categoryName" class="mt-1 text-xs font-bold text-red-500">{{ formErrors.categoryName }}</p>
                   </section>
 
-                  <!--<section class="rounded-2xl border border-amber-100/70 bg-white p-3">
+                  <section class="rounded-2xl border border-amber-100/70 bg-white p-3">
                     <div class="mb-2 flex items-center gap-2">
                       <span class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-black text-white">04</span>
-                      <h5 class="text-sm font-black text-stone-900">申请时间</h5>
+                      <h5 class="text-sm font-black text-stone-900">申请时长</h5>
                     </div>
 
-                    <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      <div class="rounded-xl border border-stone-200 bg-white p-2.5">
-                        <p class="mb-1 text-[10px] font-bold text-stone-400">开始时间</p>
-                        <input
-                          v-model="plannedStartTime"
-                          type="datetime-local"
-                          :min="minimumAllowedDateTimeInput"
-                          class="w-full rounded-lg border border-stone-200 px-2 py-2 text-xs font-semibold text-stone-700 outline-none focus:border-amber-300"
-                        />
-                      </div>
-                      <div class="rounded-xl border border-stone-200 bg-white p-2.5">
-                        <p class="mb-1 text-[10px] font-bold text-stone-400">结束时间</p>
-                        <input
-                          v-model="plannedEndTime"
-                          type="datetime-local"
-                          :min="plannedStartTime || minimumAllowedDateTimeInput"
-                          class="w-full rounded-lg border border-stone-200 px-2 py-2 text-xs font-semibold text-stone-700 outline-none focus:border-amber-300"
-                        />
-                      </div>
+                    <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      <button type="button" @click="setDuration(7)"
+                        :class="['rounded-xl border px-3 py-2.5 text-xs font-bold transition-all',
+                          !isCustomDuration && durationDays === 7 ? 'border-amber-400 bg-amber-50 text-amber-700' : 'border-stone-200 bg-white text-stone-500']">
+                        一周<br /><span class="text-[10px] font-normal">7 天</span>
+                      </button>
+                      <button type="button" @click="setDuration(30)"
+                        :class="['rounded-xl border px-3 py-2.5 text-xs font-bold transition-all',
+                          !isCustomDuration && durationDays === 30 ? 'border-amber-400 bg-amber-50 text-amber-700' : 'border-stone-200 bg-white text-stone-500']">
+                        一个月<br /><span class="text-[10px] font-normal">30 天</span>
+                      </button>
+                      <button type="button" @click="setDuration(365)"
+                        :class="['rounded-xl border px-3 py-2.5 text-xs font-bold transition-all',
+                          !isCustomDuration && durationDays === 365 ? 'border-amber-400 bg-amber-50 text-amber-700' : 'border-stone-200 bg-white text-stone-500']">
+                        一年<br /><span class="text-[10px] font-normal">365 天</span>
+                      </button>
+                      <button type="button" @click="isCustomDuration = true; durationDays = 0"
+                        :class="['rounded-xl border px-3 py-2.5 text-xs font-bold transition-all',
+                          isCustomDuration ? 'border-amber-400 bg-amber-50 text-amber-700' : 'border-stone-200 bg-white text-stone-500']">
+                        自定义<br /><span class="text-[10px] font-normal">自行填写</span>
+                      </button>
                     </div>
-
-                    <p class="mt-2 text-[11px] font-bold text-amber-600">* 仅支持夜间时段（18:00-23:59），且开始时间需晚于当前6小时</p>
+                    <div v-if="isCustomDuration" class="mt-3">
+                      <input v-model="customDurationInput" type="number" min="1" placeholder="请输入天数"
+                        class="w-full rounded-xl border border-stone-200 bg-white px-3 py-2.5 text-sm font-semibold text-stone-700 outline-none focus:border-amber-300" />
+                      <p class="mt-1 text-[10px] font-bold text-stone-400">{{ customDurationInput ? customDurationInput + ' 天' : '请输入申请时长' }}</p>
+                    </div>
+                    <p class="mt-2 text-[11px] font-bold text-amber-600">* 选择您希望申请入驻的时长，提交后即刻生效</p>
                   </section>
 
-                  <section class="rounded-2xl border border-amber-100/70 bg-white p-3">
-                    <div class="mb-2 flex items-center gap-2">
-                      <span class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-black text-white">05</span>
-                      <h5 class="text-sm font-black text-stone-900">摊位展示</h5>
-                    </div>
-
-                    <div class="rounded-xl border-2 border-dashed border-amber-200 bg-amber-50/30 p-3 text-center">
-                      <Plus class="mx-auto h-6 w-6 text-amber-500" />
-                      <p class="mt-1 text-xs font-black text-stone-700">上传图片</p>
-                      <p class="text-[10px] font-bold text-stone-400">支持 JPG / PNG / PDF，大小不超过 5MB</p>
-                    </div>
-
-                    <div class="mt-3 space-y-2">
-                      <input
-                        v-model="displayImageName"
-                        placeholder="展示图文件名"
-                        class="w-full rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs font-semibold text-stone-700 outline-none focus:border-amber-300"
-                      />
-                      <textarea
-                        v-model="applicationNote"
-                        rows="2"
-                        placeholder="可补充摊位说明"
-                        class="w-full resize-none rounded-xl border border-stone-200 bg-white px-3 py-2 text-xs font-semibold text-stone-700 outline-none focus:border-amber-300"
-                      />
-                    </div>
-                  </section>
-                  -->
-                  <section class="rounded-2xl border border-amber-100/70 bg-white p-3">
+                  <section class="rounded-2xl border border-amber-100/70 bg-white p-3" :class="{ 'border-red-300': formErrors.businessImageUrl }">
   <div class="mb-2 flex items-center gap-2">
     <span class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-[10px] font-black text-white">05</span>
-    <h5 class="text-sm font-black text-stone-900">摊位展示</h5>
+    <h5 class="text-sm font-black text-stone-900">摊位展示（经营图） <span class="text-red-400">*</span></h5>
   </div>
 
   <!-- 隐藏的真实文件输入框 -->
-  <input 
-    type="file" 
-    ref="fileInputRef" 
-    class="hidden" 
-    accept="image/*" 
+  <input
+    type="file"
+    ref="fileInputRef"
+    class="hidden"
+    accept="image/*"
     @change="handleFileChange"
   />
 
   <!-- 上传点击区域 -->
-  <div 
+  <div
     @click="triggerUpload"
     class="relative cursor-pointer overflow-hidden rounded-xl border-2 border-dashed transition-all hover:bg-amber-50/50"
-    :class="displayImageName.startsWith('http') ? 'border-emerald-200' : 'border-amber-200 bg-amber-50/30'"
+    :class="businessImageUrl ? 'border-emerald-200' : (formErrors.businessImageUrl ? 'border-red-300 bg-red-50/30' : 'border-amber-200 bg-amber-50/30')"
   >
     <!-- 上传中状态 -->
     <div v-if="isUploading" class="flex flex-col items-center py-6">
@@ -802,8 +723,8 @@ const handleFileChange = async (event: Event) => {
     </div>
 
     <!-- 已上传预览状态 -->
-    <div v-else-if="displayImageName.startsWith('http')" class="group relative aspect-video w-full">
-      <img :src="displayImageName" class="h-full w-full object-cover" />
+    <div v-else-if="businessImagePreview" class="group relative aspect-video w-full">
+      <img :src="businessImagePreview" class="h-full w-full object-cover" />
       <div class="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
         <p class="text-xs font-black text-white">点击更换图片</p>
       </div>
@@ -817,14 +738,9 @@ const handleFileChange = async (event: Event) => {
     </div>
   </div>
 
+  <p v-if="formErrors.businessImageUrl" class="mt-1 text-xs font-bold text-red-500">{{ formErrors.businessImageUrl }}</p>
+
   <div class="mt-3 space-y-2">
-    <!-- 将此处的 v-model 绑定改为只读或隐藏，因为它现在存储的是长 URL -->
-    <input
-      :value="displayImageName"
-      readonly
-      placeholder="等待图片上传..."
-      class="w-full rounded-xl border border-stone-100 bg-stone-50/50 px-3 py-2 text-[10px] font-medium text-stone-400 outline-none"
-    />
     <textarea
       v-model="applicationNote"
       rows="2"
@@ -849,8 +765,6 @@ const handleFileChange = async (event: Event) => {
       </div>
     </Transition>
 
-    <p v-if="applyError" class="mx-2 rounded-xl bg-rose-50 px-3 py-2 text-xs font-bold text-rose-600 sm:mx-4">{{ applyError }}</p>
-    <p v-if="applySuccess" class="mx-2 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-600 sm:mx-4">{{ applySuccess }}</p>
   </div>
 </template>
 

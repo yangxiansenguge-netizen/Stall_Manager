@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { onMounted, ref } from 'vue';
 import {
   TrendingUp,
   Star,
@@ -10,150 +10,459 @@ import {
   LogOut,
   ChevronRight,
   Sun,
-  MapPin
+  MapPin,
+  Camera,
+  X,
+  Clock,
+  Tag,
+  CheckCircle2,
+  AlertCircle
 } from 'lucide-vue-next';
+import { buildApiUrl } from '../utils/api';
+import { showToast } from '../composables/useToast';
 
 defineProps<{
   onLogout: () => void;
 }>();
 
-const backgroundUploadRef = ref<HTMLInputElement | null>(null);
+interface StallDetail {
+  hasApplication: boolean;
+  stallName?: string;
+  stallCode?: string;
+  boothCode?: string;
+  areaName?: string;
+  categoryName?: string;
+  plannedStartTime?: string;
+  status?: string;
+  applicationStatus?: string;
+  nextStep?: string;
+  progressPercent?: number;
+}
 
-const openBackgroundPicker = () => {
-  backgroundUploadRef.value?.click();
+// -- 状态 --
+const profileName = ref('加载中...');
+const totalRevenue = ref('¥ --');
+const boothLocation = ref('--');
+const stallDays = ref('--');
+const avatarUrl = ref('');
+const coverUrl = ref('');
+const bio = ref('');
+const vipTag = ref('LOCAL');
+
+// 编辑弹窗
+const showEditModal = ref(false);
+const editName = ref('');
+const editBio = ref('');
+
+// 摊位管理弹窗
+const showStallModal = ref(false);
+const stallDetail = ref<StallDetail>({ hasApplication: false });
+
+// 文件 refs
+const avatarInputRef = ref<HTMLInputElement | null>(null);
+const coverInputRef = ref<HTMLInputElement | null>(null);
+const uploadingAvatar = ref(false);
+const uploadingCover = ref(false);
+
+// -- API 请求 --
+const authHeaders = () => {
+  const token = localStorage.getItem('stall_auth_token') || '';
+  return { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
 };
+
+const fetchOverview = async () => {
+  try {
+    const resp = await fetch(buildApiUrl('/api/settings/overview'), {
+      headers: authHeaders(),
+    });
+    const payload = await resp.json();
+    if (payload.success && payload.data) {
+      const p = payload.data.profile;
+      if (p) {
+        profileName.value = p.merchantName || '商户';
+        boothLocation.value = p.boothLocation || '--';
+        avatarUrl.value = p.avatarUrl || '';
+        bio.value = p.description || '';
+        vipTag.value = p.vipTag || 'LOCAL';
+      }
+      coverUrl.value = payload.data.coverMedia?.coverUrl || '';
+      const stats = payload.data.stats || [];
+      const rev = stats.find((s: any) => s.label && s.label.includes('营收'));
+      if (rev) totalRevenue.value = rev.value || '¥ --';
+      const days = stats.find((s: any) => s.label && s.label.includes('入驻'));
+      if (days) stallDays.value = days.value || '--';
+    }
+  } catch { /* keep fallback */ }
+};
+
+const uploadFile = async (file: File): Promise<string> => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const token = localStorage.getItem('stall_auth_token') || '';
+  const resp = await fetch(buildApiUrl('/api/common/upload'), {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+  const result = await resp.json();
+  if (result.code === 200 || result.success) {
+    return result.data as string;
+  }
+  throw new Error(result.message || '上传失败');
+};
+
+// -- 头像上传 --
+const openAvatarPicker = () => avatarInputRef.value?.click();
+
+const onAvatarChange = async (e: Event) => {
+  const file = (e.target as HTMLInputElement).files?.[0];
+  if (!file) return;
+  if (file.size > 5 * 1024 * 1024) {
+    showToast('error', '上传失败', '头像大小不能超过 5MB');
+    return;
+  }
+  uploadingAvatar.value = true;
+  try {
+    const ossUrl = await uploadFile(file);
+    const resp = await fetch(buildApiUrl(`/api/settings/avatar?avatarUrl=${encodeURIComponent(ossUrl)}`), {
+      method: 'PUT',
+      headers: authHeaders(),
+    });
+    const payload = await resp.json();
+    if (payload.success) {
+      avatarUrl.value = ossUrl;
+      showToast('success', '头像已更新', '');
+    }
+  } catch (err: any) {
+    showToast('error', '上传失败', err.message || '请重试');
+  } finally {
+    uploadingAvatar.value = false;
+    if (avatarInputRef.value) avatarInputRef.value.value = '';
+  }
+};
+
+// -- 背景图上传 --
+const openCoverPicker = () => coverInputRef.value?.click();
+
+const onCoverChange = async (e: Event) => {
+  const file = (e.target as HTMLInputElement).files?.[0];
+  if (!file) return;
+  if (file.size > 5 * 1024 * 1024) {
+    showToast('error', '上传失败', '背景图大小不能超过 5MB');
+    return;
+  }
+  uploadingCover.value = true;
+  try {
+    const ossUrl = await uploadFile(file);
+    const resp = await fetch(buildApiUrl(`/api/settings/cover?coverUrl=${encodeURIComponent(ossUrl)}`), {
+      method: 'PUT',
+      headers: authHeaders(),
+    });
+    const payload = await resp.json();
+    if (payload.success) {
+      coverUrl.value = ossUrl;
+      showToast('success', '背景图已更新', '');
+    }
+  } catch (err: any) {
+    showToast('error', '上传失败', err.message || '请重试');
+  } finally {
+    uploadingCover.value = false;
+    if (coverInputRef.value) coverInputRef.value.value = '';
+  }
+};
+
+// -- 编辑个人信息 --
+const openEditModal = () => {
+  editName.value = profileName.value;
+  editBio.value = bio.value;
+  showEditModal.value = true;
+};
+
+const submitProfile = async () => {
+  try {
+    const resp = await fetch(buildApiUrl('/api/settings/profile'), {
+      method: 'PUT',
+      headers: authHeaders(),
+      body: JSON.stringify({ merchantName: editName.value.trim(), bio: editBio.value.trim() }),
+    });
+    const payload = await resp.json();
+    if (payload.success) {
+      profileName.value = editName.value.trim() || profileName.value;
+      bio.value = editBio.value.trim();
+      showEditModal.value = false;
+      showToast('success', '保存成功', '个人信息已更新');
+    }
+  } catch {
+    showToast('error', '保存失败', '请稍后重试');
+  }
+};
+
+// -- 摊位管理 --
+const openStallModal = async () => {
+  try {
+    const resp = await fetch(buildApiUrl('/api/settings/stall'), {
+      headers: authHeaders(),
+    });
+    const payload = await resp.json();
+    if (payload.success && payload.data) {
+      stallDetail.value = payload.data;
+    }
+  } catch { /* keep default */ }
+  showStallModal.value = true;
+};
+
+const handleAction = (actionKey: string) => {
+  if (actionKey === 'account') openEditModal();
+  else if (actionKey === 'stall-manage') openStallModal();
+  else if (actionKey === 'logout') { /* handled by parent via onLogout prop */ }
+};
+
+onMounted(() => { fetchOverview(); });
 </script>
 
 <template>
   <div class="space-y-8 md:space-y-10 pb-10 text-left">
+    <!-- ===== 背景图 Banner ===== -->
     <section
       class="group relative overflow-hidden rounded-[2.4rem] border border-stone-100 bg-white shadow-[0_22px_55px_rgba(0,0,0,0.06)] cursor-pointer"
-      role="button"
-      tabindex="0"
-      @click="openBackgroundPicker"
-      @keydown.enter.prevent="openBackgroundPicker"
-      @keydown.space.prevent="openBackgroundPicker"
+      role="button" tabindex="0"
+      @click="openCoverPicker"
+      @keydown.enter.prevent="openCoverPicker"
+      @keydown.space.prevent="openCoverPicker"
     >
-      <input
-        ref="backgroundUploadRef"
-        type="file"
-        accept="image/*,video/*"
-        class="hidden"
-      />
-      <img
-        src="https://images.unsplash.com/photo-1528698827591-e19ccd7bc23d?q=80&w=1600&auto=format&fit=crop"
-        alt="Store cover"
-        class="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.02]"
-        referrerPolicy="no-referrer"
-      />
+      <input ref="coverInputRef" type="file" accept="image/*" class="hidden" @change="onCoverChange" />
+
+      <!-- 背景图 -->
+      <template v-if="coverUrl">
+        <img :src="coverUrl" alt="Store cover" class="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.02]" referrerPolicy="no-referrer" />
+      </template>
+      <template v-else>
+        <img src="https://images.unsplash.com/photo-1528698827591-e19ccd7bc23d?q=80&w=1600&auto=format&fit=crop" alt="Store cover" class="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.02]" referrerPolicy="no-referrer" />
+      </template>
+
       <div class="absolute inset-0 bg-gradient-to-br from-stone-950/72 via-stone-950/36 to-amber-900/24"></div>
       <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(251,191,36,0.18),transparent_26%)]"></div>
 
-      <div class="relative z-10 p-5 sm:p-6 md:p-8">
-        <div class="flex justify-end">
-          <span class="rounded-full border border-white/15 bg-black/20 px-3.5 py-2 text-[11px] font-bold text-white/90 backdrop-blur-md transition-all group-hover:bg-black/30">
-            点击上传背景图或视频
+      <div class="relative z-10 flex h-full flex-col justify-between p-5 sm:p-6 md:p-8">
+        <!-- 顶栏 -->
+        <div>
+          <span class="rounded-full border border-white/15 bg-black/20 px-3.5 py-2 text-[11px] font-bold text-white/90 backdrop-blur-md">
+            {{ uploadingCover ? '上传中...' : '点击更换背景图' }}
           </span>
         </div>
 
-        <div class="mt-16 flex flex-col gap-4 sm:mt-20 sm:flex-row sm:items-end">
-          <div class="relative flex-shrink-0">
-            <div class="h-20 w-20 rounded-full border border-amber-100/20 bg-gradient-to-tr from-amber-200 to-amber-500 p-1 shadow-lg md:h-24 md:w-24">
-              <div class="h-full w-full overflow-hidden rounded-full border-2 border-white shadow-inner md:border-4">
-                <img
-                  alt="Avatar"
-                  class="h-full w-full object-cover"
-                  src="https://picsum.photos/seed/merchant/200/200"
-                  referrerPolicy="no-referrer"
-                />
+        <!-- 底栏：左侧头像 + 右侧信息 -->
+        <div class="flex items-end gap-4">
+          <!-- 左侧：头像（左下角，距底和左有间距） -->
+          <div class="relative flex-shrink-0 cursor-pointer mb-2 ml-1 sm:mb-3 sm:ml-2" @click.stop="openAvatarPicker">
+            <input ref="avatarInputRef" type="file" accept="image/*" class="hidden" @change="onAvatarChange" />
+            <div class="h-[4.5rem] w-[4.5rem] sm:h-20 sm:w-20 md:h-24 md:w-24 rounded-full border-[3px] border-white/80 bg-gradient-to-tr from-amber-200 to-amber-500 p-0.5 shadow-xl hover:scale-105 transition-transform">
+              <div class="h-full w-full overflow-hidden rounded-full border-2 border-white/60">
+                <img v-if="avatarUrl" :src="avatarUrl" alt="Avatar" class="h-full w-full object-cover" referrerPolicy="no-referrer" />
+                <img v-else alt="Avatar" class="h-full w-full object-cover" src="https://picsum.photos/seed/merchant/200/200" referrerPolicy="no-referrer" />
               </div>
             </div>
-            <div class="absolute bottom-0 right-0 rounded-full border-2 border-white bg-amber-400 px-2.5 py-0.5 text-[9px] font-bold tracking-wider text-stone-900 shadow-sm md:text-[10px]">
-              VIP
+            <div class="absolute -bottom-1 -right-1 rounded-full bg-stone-800 p-1 text-white shadow"><Camera class="h-2.5 w-2.5 sm:h-3 sm:w-3" /></div>
+            <div v-if="uploadingAvatar" class="absolute inset-0 flex items-center justify-center rounded-full bg-black/40">
+              <div class="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
             </div>
           </div>
 
+          <!-- 右侧：名称 + 标签 + 签名 + 位置 -->
           <div class="min-w-0 flex-1 text-left text-white">
-            <h1 class="text-2xl font-extrabold tracking-tight text-white md:text-3xl">林晓雅</h1>
+            <h1 class="text-2xl font-extrabold tracking-tight text-white md:text-3xl">{{ profileName }}</h1>
             <div class="mt-2 flex flex-wrap items-center gap-2.5">
               <span class="rounded-lg bg-amber-300/20 px-2.5 py-1 text-[9px] font-bold uppercase tracking-tight text-amber-100 backdrop-blur-md">金牌摊主 Master</span>
+              <span class="rounded-lg bg-white/10 px-2.5 py-1 text-[9px] font-bold uppercase tracking-tight text-white/70 backdrop-blur-md">{{ vipTag }}</span>
             </div>
-            <p class="mt-2 max-w-xl text-sm font-medium leading-relaxed text-white/82">
-              用一张氛围封面或一段短视频，把招牌产品、摊位风格和你的烟火故事都展示给顾客看。
-            </p>
-            <span class="mt-2 inline-flex items-center gap-1 text-[10px] font-bold text-white/65">
-              <MapPin class="h-3 w-3" /> 静安夜市 042
-            </span>
+            <p class="mt-2 max-w-xl text-sm font-medium leading-relaxed text-white/82">{{ bio || '用美食传递温暖，用心经营每一天' }}</p>
+            <span class="mt-2 inline-flex items-center gap-1 text-[10px] font-bold text-white/65"><MapPin class="h-3 w-3" />{{ boothLocation }}</span>
           </div>
         </div>
       </div>
     </section>
-
+    
+    <!-- ===== 统计卡片 ===== -->
     <section class="grid grid-cols-2 gap-3.5 md:gap-4">
       <div class="bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-stone-100">
         <p class="text-stone-400 text-[9px] md:text-[10px] font-bold uppercase tracking-widest opacity-60 mb-1">累计营收</p>
-        <h3 class="text-xl md:text-2xl font-bold text-stone-900 tracking-tight">¥128,430</h3>
+        <h3 class="text-xl md:text-2xl font-bold text-stone-900 tracking-tight">{{ totalRevenue }}</h3>
         <div class="mt-2 flex items-center gap-1 text-emerald-600 font-bold">
           <TrendingUp class="w-3 h-3" />
-          <span class="text-[10px]">+12.5%</span>
+          <span class="text-[10px]">来自销售订单</span>
         </div>
       </div>
       <div class="bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-stone-100">
-        <p class="text-stone-400 text-[9px] md:text-[10px] font-bold uppercase tracking-widest opacity-60 mb-1">出摊天数</p>
-        <h3 class="text-xl md:text-2xl font-bold text-stone-900 tracking-tight">456 天</h3>
-        <div class="mt-2 flex items-center gap-1 text-amber-500 font-bold">
-          <Star class="w-3 h-3 fill-amber-500" />
-          <span class="text-[10px]">全勤记录</span>
+        <p class="text-stone-400 text-[9px] md:text-[10px] font-bold uppercase tracking-widest opacity-60 mb-1">入驻天数</p>
+        <h3 class="text-xl md:text-2xl font-bold text-stone-900 tracking-tight">{{ stallDays }}</h3>
+        <div class="mt-2 flex items-center gap-1 text-stone-400 font-bold">
+          <span class="text-[10px]">从首次申请起算</span>
         </div>
       </div>
     </section>
 
+    <!-- ===== 成就徽章 ===== -->
     <section>
-      <div class="flex justify-between items-end mb-4 px-1">
-        <h2 class="text-base md:text-lg font-bold text-stone-900 tracking-tight">成就勋章 Achievements</h2>
-        <button class="text-amber-600 text-[11px] md:text-xs font-bold">查看全部</button>
-      </div>
-      <div class="flex gap-4 overflow-x-auto pb-4 no-scrollbar px-1">
-        <div v-for="(item, i) in [
+      <h3 class="text-sm font-black text-stone-900 mb-3">成就徽章</h3>
+      <div class="flex gap-3 overflow-x-auto pb-2">
+        <div v-for="(badge, i) in [
           { label: '早起鸟 Early Bird', icon: Sun, color: 'bg-orange-50', text: 'text-orange-500' },
           { label: '营收达人 Master', icon: Star, color: 'bg-amber-50', text: 'text-amber-500' },
           { label: '人气摊位 Popular', icon: Heart, color: 'bg-rose-50', text: 'text-rose-500' },
-        ]" :key="i" class="flex-shrink-0 w-24 md:w-28 h-32 md:h-36 bg-white rounded-2xl flex flex-col items-center justify-center p-3 md:p-4 text-center border border-stone-50 shadow-sm">
-          <div :class="['w-12 h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center mb-2 md:mb-3 shadow-inner', item.color]">
-            <component :is="item.icon" :class="['w-6 h-6 md:w-8 md:h-8 fill-current', item.text]" />
+        ]" :key="i"
+          class="flex shrink-0 items-center gap-2.5 rounded-2xl border border-stone-100 bg-white px-4 py-3 shadow-sm"
+        >
+          <div :class="['flex h-9 w-9 items-center justify-center rounded-xl', badge.color]">
+            <component :is="badge.icon" :class="['h-4 w-4', badge.text]" />
           </div>
-          <p class="text-[10px] md:text-[11px] font-bold leading-tight opacity-80 text-stone-900">{{ item.label }}</p>
+          <div class="text-left">
+            <p class="text-[11px] font-black text-stone-900">{{ badge.label }}</p>
+            <p class="text-[9px] font-bold text-stone-400">已解锁</p>
+          </div>
         </div>
       </div>
     </section>
 
-    <section class="bg-white rounded-2xl p-2 shadow-sm border border-stone-100">
-      <div 
+    <!-- ===== 设置菜单 ===== -->
+    <section class="space-y-2">
+      <div
         v-for="(item, i) in [
-          { title: '账号信息', sub: '个人资料与安全管理', icon: User },
-          { title: '支付设置', sub: '收款账户与费率查看', icon: Wallet },
-          { title: '摊位管理', sub: '位置续期与设施申请', icon: Store },
-          { title: '退出登录', icon: LogOut, danger: true, action: onLogout },
-        ]" 
-        :key="i" 
-        @click="item.action ? item.action() : null"
-        class="flex items-center gap-4 p-4 hover:bg-stone-50 transition-colors rounded-xl cursor-pointer group"
+          { title: '账号信息', sub: '个人资料与安全管理', icon: User, action: 'account' },
+          { title: '支付设置', sub: '收款账户与费率查看', icon: Wallet, action: 'payment' },
+          { title: '摊位管理', sub: '查看摊位申请详情', icon: Store, action: 'stall-manage' },
+        ]" :key="i"
+        class="flex items-center justify-between rounded-2xl border border-stone-100 bg-white p-4 cursor-pointer hover:bg-stone-50 transition-colors"
+        @click="handleAction(item.action)"
       >
-        <div :class="['w-10 h-10 rounded-full flex items-center justify-center transition-colors bg-stone-50', 
-          item.danger ? 'group-hover:bg-rose-50 group-hover:text-rose-500' : 'group-hover:bg-amber-50 group-hover:text-amber-600']">
-          <component :is="item.icon" class="w-5 h-5" />
+        <div class="flex items-center gap-3">
+          <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-stone-50">
+            <component :is="item.icon" class="h-4 w-4 text-stone-500" />
+          </div>
+          <div class="text-left">
+            <p class="text-sm font-bold text-stone-900">{{ item.title }}</p>
+            <p class="text-[11px] text-stone-400">{{ item.sub }}</p>
+          </div>
         </div>
-        <div class="flex-1">
-          <p :class="['text-sm font-bold tracking-tight', item.danger ? 'text-rose-500' : 'text-stone-900']">{{ item.title }}</p>
-          <p v-if="item.sub" class="text-[10px] text-stone-400 font-medium opacity-60 leading-none mt-0.5">{{ item.sub }}</p>
+        <ChevronRight class="h-4 w-4 text-stone-300" />
+      </div>
+
+      <div
+        class="flex items-center justify-between rounded-2xl border border-rose-100 bg-white p-4 cursor-pointer hover:bg-rose-50 transition-colors"
+        @click="onLogout"
+      >
+        <div class="flex items-center gap-3">
+          <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-rose-50">
+            <LogOut class="h-4 w-4 text-rose-500" />
+          </div>
+          <div class="text-left">
+            <p class="text-sm font-bold text-rose-600">退出登录</p>
+          </div>
         </div>
-        <ChevronRight class="w-4 h-4 text-stone-300 opacity-20" />
+        <ChevronRight class="h-4 w-4 text-rose-300" />
       </div>
     </section>
 
-    <div class="mt-8 md:mt-12 text-center opacity-10 select-none pb-8 md:pb-12 h-20 flex flex-col items-center justify-center">
-      <h4 class="font-headline font-black text-3xl md:text-4xl tracking-tighter text-stone-900 leading-none">摊位管家</h4>
-      <p class="font-body text-[8px] md:text-[10px] tracking-[0.4em] uppercase mt-1">STALL MANAGER</p>
+    <!-- 品牌尾 -->
+    <div class="text-center pt-4">
+      <p class="text-[10px] font-bold text-stone-300 tracking-widest">摊位管家</p>
+      <p class="text-[8px] font-bold text-stone-300/60 tracking-[0.2em] uppercase mt-0.5">STALL MANAGER</p>
     </div>
+
+    <!-- ===== 编辑个人信息弹窗 ===== -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="showEditModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" @click.self="showEditModal = false">
+          <div class="w-full max-w-md rounded-2xl bg-white shadow-2xl p-6">
+            <div class="flex items-center justify-between mb-5">
+              <h3 class="text-lg font-black text-stone-900">编辑个人信息</h3>
+              <button @click="showEditModal = false" class="rounded-xl p-2 hover:bg-stone-100">
+                <X class="h-4 w-4 text-stone-400" />
+              </button>
+            </div>
+            <div class="space-y-4">
+              <div>
+                <label class="text-xs font-bold text-stone-500 mb-1.5 block">商户名称</label>
+                <input v-model="editName" class="w-full rounded-xl border border-stone-200 px-3 py-2.5 text-sm font-semibold text-stone-800 outline-none focus:border-amber-300" placeholder="请输入商户名称" maxlength="20" />
+              </div>
+              <div>
+                <label class="text-xs font-bold text-stone-500 mb-1.5 block">个性签名</label>
+                <textarea v-model="editBio" rows="3" class="w-full resize-none rounded-xl border border-stone-200 px-3 py-2.5 text-sm font-semibold text-stone-800 outline-none focus:border-amber-300" placeholder="写一句话介绍自己..." maxlength="200"></textarea>
+                <p class="text-[10px] text-stone-400 mt-1">{{ editBio.length }}/200</p>
+              </div>
+            </div>
+            <div class="mt-5 flex gap-3">
+              <button @click="showEditModal = false" class="flex-1 rounded-xl border border-stone-200 py-2.5 text-sm font-bold text-stone-500 hover:bg-stone-50">取消</button>
+              <button @click="submitProfile" class="flex-1 rounded-xl bg-amber-500 py-2.5 text-sm font-black text-white hover:bg-amber-600 transition-colors">保存</button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <!-- ===== 摊位管理弹窗 ===== -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="showStallModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" @click.self="showStallModal = false">
+          <div class="w-full max-w-md rounded-2xl bg-white shadow-2xl p-6">
+            <div class="flex items-center justify-between mb-5">
+              <h3 class="text-lg font-black text-stone-900">摊位管理</h3>
+              <button @click="showStallModal = false" class="rounded-xl p-2 hover:bg-stone-100">
+                <X class="h-4 w-4 text-stone-400" />
+              </button>
+            </div>
+
+            <template v-if="stallDetail.hasApplication">
+              <div class="space-y-3">
+                <div class="flex items-center justify-between rounded-xl bg-stone-50 p-3">
+                  <span class="text-xs font-bold text-stone-500">申请状态</span>
+                  <span :class="['inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-black',
+                    stallDetail.applicationStatus === 'APPROVED' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600']">
+                    <CheckCircle2 v-if="stallDetail.applicationStatus === 'APPROVED'" class="h-3 w-3" />
+                    <AlertCircle v-else class="h-3 w-3" />
+                    {{ stallDetail.applicationStatus === 'APPROVED' ? '已通过' : stallDetail.applicationStatus === 'REJECTED' ? '未通过' : '审核中' }}
+                  </span>
+                </div>
+                <div v-if="stallDetail.stallName" class="flex items-center justify-between rounded-xl bg-stone-50 p-3">
+                  <span class="text-xs font-bold text-stone-500">摊位名称</span>
+                  <span class="text-sm font-black text-stone-900">{{ stallDetail.stallName }}</span>
+                </div>
+                <div v-if="stallDetail.categoryName" class="flex items-center justify-between rounded-xl bg-stone-50 p-3">
+                  <span class="text-xs font-bold text-stone-500"><Tag class="h-3 w-3 inline mr-1" />经营类目</span>
+                  <span class="text-sm font-bold text-stone-700">{{ stallDetail.categoryName }}</span>
+                </div>
+                <div v-if="stallDetail.areaName" class="flex items-center justify-between rounded-xl bg-stone-50 p-3">
+                  <span class="text-xs font-bold text-stone-500"><MapPin class="h-3 w-3 inline mr-1" />经营地点</span>
+                  <span class="text-sm font-bold text-stone-700 truncate max-w-[180px]">{{ stallDetail.areaName }}</span>
+                </div>
+                <div v-if="stallDetail.plannedStartTime" class="flex items-center justify-between rounded-xl bg-stone-50 p-3">
+                  <span class="text-xs font-bold text-stone-500"><Clock class="h-3 w-3 inline mr-1" />计划开始</span>
+                  <span class="text-sm font-bold text-stone-700">{{ stallDetail.plannedStartTime.replace('T', ' ') }}</span>
+                </div>
+                <div v-if="stallDetail.stallCode" class="flex items-center justify-between rounded-xl bg-stone-50 p-3">
+                  <span class="text-xs font-bold text-stone-500">摊位编号</span>
+                  <span class="text-sm font-bold text-stone-700">{{ stallDetail.stallCode }}</span>
+                </div>
+                <div v-if="stallDetail.progressPercent != null" class="flex items-center justify-between rounded-xl bg-stone-50 p-3">
+                  <span class="text-xs font-bold text-stone-500">完成进度</span>
+                  <span class="text-sm font-black text-amber-600">{{ stallDetail.progressPercent }}%</span>
+                </div>
+                <div v-if="stallDetail.nextStep" class="rounded-xl bg-amber-50 p-3">
+                  <p class="text-xs font-bold text-amber-700">📋 {{ stallDetail.nextStep }}</p>
+                </div>
+              </div>
+            </template>
+            <template v-else>
+              <div class="text-center py-8">
+                <Store class="mx-auto h-10 w-10 text-stone-300 mb-3" />
+                <p class="text-sm font-bold text-stone-400">尚未申请摊位</p>
+                <p class="text-xs text-stone-300 mt-1">前往摊位页面提交入驻申请</p>
+              </div>
+            </template>
+
+            <button @click="showStallModal = false" class="mt-5 w-full rounded-xl bg-stone-900 py-2.5 text-sm font-black text-white">关闭</button>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
