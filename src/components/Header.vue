@@ -10,6 +10,7 @@ import {
 defineProps<{
   onOpenMessages?: () => void;
   merchantName?: string;
+  avatarUrl?: string;
 }>();
 
 const showNotifications = ref(false);
@@ -50,7 +51,7 @@ const notifications: { id: number; title: string; content: string; time: string;
 
         <div class="flex items-center gap-2 border-l border-stone-100 pl-2 sm:gap-3 sm:pl-4">
           <div class="h-8 w-8 overflow-hidden rounded-full border-2 border-stone-50 sm:h-9 sm:w-9">
-            <img src="https://picsum.photos/seed/user_强/100/100" alt="Avatar" class="w-full h-full object-cover" referrerPolicy="no-referrer" />
+            <img :src="avatarUrl || 'https://picsum.photos/seed/merchant/100/100'" alt="Avatar" class="w-full h-full object-cover" referrerPolicy="no-referrer" />
           </div>
           <div class="hidden sm:flex items-center gap-1.5 cursor-pointer group">
             <span class="text-sm font-bold text-stone-900">{{ merchantName || '商户' }}</span>

@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import { 
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import {
   ArrowUpRight,
   Search,
-  Plus, 
-  MapPin, 
+  Plus,
+  MapPin,
   Flame,
-  ChevronRight, 
+  ChevronRight,
   Clock,
   TrendingUp,
   Sparkles,
@@ -14,16 +14,13 @@ import {
   X,
   Send,
   Navigation,
-  Brain,
-  Target,
-  Zap,
   BookOpen,
-  ArrowRight,
   ShieldCheck,
   Map as MapIcon
 } from 'lucide-vue-next';
 import { buildApiUrl } from '../utils/api';
 import { showToast } from '../composables/useToast';
+import { useLocationStore } from '../stores/location';
 
 const userStatus = ref<'none' | 'pending' | 'active'>('none');
 
@@ -55,8 +52,14 @@ const businessImageUrl = ref('');
 const businessImagePreview = ref('');
 const applicationNote = ref('');
 const selectedCoordinate = ref({ latitude: 31.2304, longitude: 121.4737 });
+const submittedDisplayAddress = ref('');
 const submittingApply = ref(false);
 const formErrors = ref<Record<string, string>>({});
+
+// 摊位申请的地址（从后端加载，与个人定位分离）
+const stallApplicationAddress = ref('');
+const appLatitude = ref<number | null>(null);
+const appLongitude = ref<number | null>(null);
 
 const validateApplyForm = (): boolean => {
   const errors: Record<string, string> = {};
@@ -88,6 +91,189 @@ const mockLocations = [
   { name: '滨江创意街区', latitude: 31.2216, longitude: 121.4915 },
   { name: '老街美食巷', latitude: 31.2389, longitude: 121.4632 }
 ];
+
+// ===== 百度地图（完整版：Autocomplete + Geocoder + Geolocation） =====
+const BAIDU_MAP_AK = 'LwmGzDCLOJPLXYILcQeWuVmd7xqgdRzC';
+const mapContainerRef = ref<HTMLDivElement | null>(null);
+const mapLoaded = ref(false);
+const locationName = ref('未选择位置');
+let geocodeTimer: any = null;
+let mapInstance: any = null;
+let activeMarker: any = null;
+let geoInstance: any = null;
+
+const loadBaiduMapSDK = (): Promise<void> => {
+  return new Promise((resolve) => {
+    if ((window as any).BMapGL) { resolve(); return; }
+    const script = document.createElement('script');
+    script.src = `https://api.map.baidu.com/api?v=1.0&type=webgl&ak=${BAIDU_MAP_AK}&callback=baiduMapInit`;
+    (window as any).baiduMapInit = () => { resolve(); };
+    document.head.appendChild(script);
+  });
+};
+
+// 地址智能生成：fullAddress / displayAddress / businessArea
+const formatAddress = (rs: any, c: any) => {
+  const pois = rs.surroundingPois || [];
+  const poi = pois.find((p: any) =>
+    p.title &&
+    !p.title.includes('Unnamed') &&
+    !p.title.includes('无名')
+  )?.title || '';
+
+  const fullAddress = [c.province, c.city, c.district, c.street, c.streetNumber]
+    .filter(Boolean).join('');
+
+  let displayAddress = '';
+  if (poi) {
+    displayAddress = c.district ? `${poi}（${c.district}）` : poi;
+  } else {
+    displayAddress = [c.district, c.street].filter(Boolean).join(' · ');
+  }
+
+  return { fullAddress, displayAddress, businessArea: poi };
+};
+
+// 反查地址（仅用于摊位申请，不写入个人位置缓存）
+const reverseGeocode = (lat: number, lng: number) => {
+  if (!geoInstance) return;
+  locationName.value = '解析中...';
+  clearTimeout(geocodeTimer);
+
+  let resolved = false;
+  geocodeTimer = setTimeout(() => {
+    if (!resolved) {
+      locationName.value = '定位失败（API额度耗尽）';
+      showToast('error', '定位失败', '百度地图 API 额度已用完，请更换 AK');
+    }
+  }, 5000);
+
+  geoInstance.getLocation(new (window as any).BMapGL.Point(lng, lat), (rs: any) => {
+    resolved = true;
+    clearTimeout(geocodeTimer);
+    if (rs && rs.address) {
+      const c = rs.addressComponents || {};
+      const { fullAddress, displayAddress } = formatAddress(rs, c);
+      locationName.value = displayAddress || fullAddress;
+      selectedAreaName.value = fullAddress || displayAddress;
+      submittedDisplayAddress.value = displayAddress || fullAddress;
+    } else {
+      locationName.value = '定位失败（无结果）';
+    }
+  });
+};
+
+// 放置标记
+const placeMarker = (lng: number, lat: number) => {
+  const BMapGL = (window as any).BMapGL;
+  if (activeMarker) mapInstance.removeOverlay(activeMarker);
+  const pt = new BMapGL.Point(lng, lat);
+  activeMarker = new BMapGL.Marker(pt);
+  mapInstance.addOverlay(activeMarker);
+  mapInstance.centerAndZoom(pt, 17);
+  selectedCoordinate.value = { latitude: lat, longitude: lng };
+  reverseGeocode(lat, lng);
+  if (formErrors.value.areaName) delete formErrors.value.areaName;
+};
+
+const initMap = async () => {
+  if (!mapContainerRef.value) return;
+  await loadBaiduMapSDK();
+  await new Promise(r => setTimeout(r, 100));
+
+  const BMapGL = (window as any).BMapGL;
+  mapInstance = new BMapGL.Map(mapContainerRef.value, { enableMapClick: false });
+  mapInstance.centerAndZoom(new BMapGL.Point(121.4737, 31.2304), 15);
+  mapInstance.enableScrollWheelZoom(true);
+  mapInstance.addControl(new BMapGL.ScaleControl());
+  mapInstance.addControl(new BMapGL.ZoomControl());
+
+  // 逆地理编码实例
+  geoInstance = new BMapGL.Geocoder();
+
+  // 地图点击 → 放置标记 + 反查地址
+  mapInstance.addEventListener('click', (e: any) => {
+    placeMarker(e.latlng.lng, e.latlng.lat);
+  });
+
+  // 预设标记
+  mockLocations.forEach((loc) => {
+    const m = new BMapGL.Marker(new BMapGL.Point(loc.longitude, loc.latitude));
+    mapInstance.addOverlay(m);
+    m.addEventListener('click', () => placeMarker(loc.longitude, loc.latitude));
+  });
+
+  // 已有申请坐标 → 直接定位到摊位地址
+  if (appLatitude.value != null && appLongitude.value != null) {
+    placeMarker(appLongitude.value, appLatitude.value);
+    mapLoaded.value = true;
+    return;
+  }
+
+  // 自动定位（百度API额度耗尽时静默失败）
+  try {
+    const geolocation = new BMapGL.Geolocation();
+    geolocation.getCurrentPosition((rs: any) => {
+      if (geolocation.getStatus() === 0 && rs && rs.point) {
+        placeMarker(rs.point.lng, rs.point.lat);
+      }
+    });
+  } catch { /* 百度 API 不可用时跳过自动定位 */ }
+
+  mapLoaded.value = true;
+};
+
+// 搜索建议（Baidu Suggestion API + 防抖）
+const searchSuggestions = ref<Array<{ name: string; address: string; lat: number; lng: number }>>([]);
+const searchAddress = ref('');
+let searchTimer: any = null;
+
+const fetchSuggestions = () => {
+  const q = searchQuery.value.trim();
+  if (!q || q.length < 2) { searchSuggestions.value = []; return; }
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(async () => {
+    try {
+      const resp = await fetch(`https://api.map.baidu.com/place/v2/suggestion?query=${encodeURIComponent(q)}&region=全国&city_limit=false&ak=${BAIDU_MAP_AK}&output=json`);
+      const data = await resp.json();
+      if (data.status === 0 && data.result) {
+        searchSuggestions.value = (data.result || []).map((r: any) => ({
+          name: r.name, address: r.address || '', lat: r.location.lat, lng: r.location.lng
+        }));
+      }
+    } catch { searchSuggestions.value = []; }
+  }, 300);
+};
+
+const selectSuggestion = (item: { name: string; address: string; lat: number; lng: number }) => {
+  searchQuery.value = item.name;
+  searchAddress.value = item.address;
+  searchSuggestions.value = [];
+  placeMarker(item.lng, item.lat);
+  locationName.value = item.address || item.name;
+};
+
+const searchMap = () => {
+  if (!searchQuery.value.trim()) return;
+  const BMapGL = (window as any).BMapGL;
+  const local = new BMapGL.LocalSearch(mapInstance, {
+    onSearchComplete: (results: any) => {
+      if (local.getStatus() === 0 && results && results.getNumPois() > 0) {
+        const first = results.getPoi(0);
+        searchAddress.value = first.address || first.title;
+        searchSuggestions.value = [];
+        placeMarker(first.point.lng, first.point.lat);
+        locationName.value = first.address || first.title;
+      }
+    }
+  });
+  local.search(searchQuery.value.trim());
+};
+
+// 打开 Modal 时初始化地图
+watch(showApplyModal, (val) => {
+  if (val) { setTimeout(() => initMap(), 200); }
+});
 
 const hotAreas = [
 
@@ -145,9 +331,70 @@ const mobileModalCardStyle = computed(() => {
   };
 });
 
+const locationStore = useLocationStore();
+
+// 加载已有申请状态（读取摊位申请地址，不影响个人定位）
+const loadApplicationStatus = async () => {
+  try {
+    const token = localStorage.getItem('stall_auth_token') || '';
+    const resp = await fetch(buildApiUrl('/api/stalls/onboarding/status'), {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const p = await resp.json();
+    if (p.success && p.data && p.data.latestApplication) {
+      const app = p.data.latestApplication;
+      userStatus.value = p.data.currentStatus === 'APPROVED' ? 'active' : 'pending';
+
+      // 回显所有申请字段
+      if (app.applicantName) stallNameInput.value = app.applicantName;
+      if (app.categoryName) selectedCategoryName.value = app.categoryName;
+      if (app.selectedArea) selectedAreaName.value = app.selectedArea;
+      if (app.displayAddress) {
+        stallApplicationAddress.value = app.displayAddress;
+        searchQuery.value = app.displayAddress;
+        searchAddress.value = app.displayAddress;
+      } else if (app.selectedArea) {
+        stallApplicationAddress.value = app.selectedArea;
+        searchQuery.value = app.selectedArea;
+        searchAddress.value = app.selectedArea;
+      }
+      if (app.latitude != null && app.longitude != null) {
+        appLatitude.value = app.latitude;
+        appLongitude.value = app.longitude;
+        selectedCoordinate.value = { latitude: app.latitude, longitude: app.longitude };
+      }
+      if (app.durationDays != null && app.durationDays > 0) {
+        const preset = [7, 30, 365].includes(app.durationDays);
+        if (preset) {
+          durationDays.value = app.durationDays;
+          isCustomDuration.value = false;
+        } else {
+          isCustomDuration.value = true;
+          customDurationInput.value = String(app.durationDays);
+        }
+      }
+      if (app.businessImageUrl) {
+        businessImageUrl.value = app.businessImageUrl;
+        businessImagePreview.value = app.businessImageUrl;
+      }
+      if (app.remark) {
+        // 去掉旧数据中残留的坐标后缀 " | 坐标: xx.xxx, xx.xxx"
+        applicationNote.value = app.remark.replace(/\s*\|\s*坐标:\s*[\d.]+,\s*[\d.]+/, '').trim();
+      }
+    } else {
+      // 首次申请：使用首页定位的地址作为默认值
+      if (locationStore.displayAddress) {
+        searchQuery.value = locationStore.displayAddress;
+        searchAddress.value = locationStore.displayAddress;
+      }
+    }
+  } catch { /* ignore */ }
+};
+
 onMounted(() => {
   updateViewport();
   window.addEventListener('resize', updateViewport);
+  loadApplicationStatus();
 });
 
 onBeforeUnmount(() => {
@@ -196,14 +443,20 @@ const submitApply = async () => {
         durationDays: dur,
         locationLatitude: selectedCoordinate.value.latitude,
         locationLongitude: selectedCoordinate.value.longitude,
+        displayAddress: submittedDisplayAddress.value || selectedAreaName.value,
         businessImageUrl: businessImageUrl.value,
         note: applicationNote.value.trim() || null
       })
     });
 
-    const payload = (await response.json()) as ApiResponse<{ applicationId: string }>;
+    const payload = (await response.json()) as ApiResponse<{ applicationId: string; displayAddress?: string }>;
     if (!response.ok || !payload.success) {
       throw new Error(payload.message || '提交申请失败');
+    }
+
+    // 保存摊位申请地址（与个人定位分离）
+    if (payload.data?.displayAddress) {
+      stallApplicationAddress.value = payload.data.displayAddress;
     }
 
     userStatus.value = 'active';
@@ -310,8 +563,8 @@ const handleFileChange = async (event: Event) => {
                 <p class="mt-1 text-sm font-black text-stone-900">17:00 - 22:00</p>
               </div>
               <div class="rounded-[1.4rem] border border-stone-100 bg-stone-50 p-3 text-center sm:text-left">
-                <p class="text-[10px] font-black uppercase tracking-widest text-stone-400">热门商圈</p>
-                <p class="mt-1 text-sm font-black text-stone-900">文化广场</p>
+                <p class="text-[10px] font-black uppercase tracking-widest text-stone-400">{{ stallApplicationAddress ? '摊位地址' : '热门商圈' }}</p>
+                <p class="mt-1 text-sm font-black text-stone-900 truncate max-w-[140px]">{{ stallApplicationAddress || '文化广场' }}</p>
               </div>
             </div>
           </div>
@@ -360,65 +613,7 @@ const handleFileChange = async (event: Event) => {
       </div>
     </section>
 
-    <!-- 3. AI 智能经营助手 -->
-    <section class="px-1">
-      <div class="relative overflow-hidden rounded-[2.5rem] border border-stone-50 bg-white p-8 text-center shadow-[0_10px_20px_rgba(0,0,0,0.05)] sm:text-left">
-        <div class="pointer-events-none absolute inset-0 opacity-[0.03]" style="background-image: radial-gradient(#6366f1 1px, transparent 1px); background-size: 16px 16px;"></div>
-        <div class="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-indigo-50 blur-[80px] -z-10"></div>
-        
-        <div class="flex flex-col items-center gap-8 lg:flex-row lg:items-start">
-          <div class="flex-1 space-y-6">
-            <div class="flex items-center justify-center gap-3 lg:justify-start">
-              <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-500 text-white shadow-lg shadow-indigo-200">
-                <Brain class="w-6 h-6" />
-              </div>
-              <div>
-                <h3 class="text-xl font-black leading-none tracking-tight text-stone-900">AI 智能经营规划</h3>
-                <p class="mt-1 text-[10px] font-bold uppercase tracking-widest text-stone-400">Master Sales Strategy Assistant</p>
-              </div>
-            </div>
-            
-            <div class="space-y-4">
-              <div class="mx-auto flex w-fit items-center gap-2 rounded-full border border-indigo-100 bg-indigo-50/50 px-3 py-1 sm:mx-0">
-                <span class="relative flex h-2 w-2">
-                  <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-indigo-400 opacity-75"></span>
-                  <span class="relative inline-flex h-2 w-2 rounded-full bg-indigo-500"></span>
-                </span>
-                <span class="text-[9px] font-black uppercase tracking-widest text-indigo-600">AI 正在根据实时人流深度分析中...</span>
-              </div>
-              
-              <p class="mx-auto max-w-2xl text-sm font-medium leading-relaxed text-stone-500 sm:mx-0">
-                基于周边 3km 实时活跃度，AI 已初步构建 <span class="font-black text-indigo-600">今日致富蓝图</span>。接入后将为您提供精准的单品配比建议与话术方案。
-              </p>
-              
-              <div class="grid grid-cols-2 gap-4 md:grid-cols-4">
-                <div v-for="(item, idx) in [
-                  { label: '核心类目', value: '潮玩模型', icon: Target, color: 'text-rose-500', bg: 'bg-rose-50' },
-                  { label: '预计流水', value: '¥1,500+', icon: Zap, color: 'text-amber-500', bg: 'bg-amber-50' },
-                  { label: '黄金时段', value: '19:30', icon: Clock, color: 'text-indigo-500', bg: 'bg-indigo-50' },
-                  { label: '转化预估', value: '8.2%', icon: TrendingUp, color: 'text-emerald-500', bg: 'bg-emerald-50' }
-                ]" :key="idx" class="rounded-[1.35rem] border border-stone-100/50 bg-stone-50/60 p-3.5 text-center transition-all hover:bg-white hover:shadow-md sm:rounded-3xl sm:p-4">
-                  <div :class="['mb-2 flex h-8 w-8 items-center justify-center rounded-xl', item.bg, item.color, 'mx-auto']">
-                    <component :is="item.icon" class="w-4 h-4" />
-                  </div>
-                  <p class="text-[9px] font-black uppercase tracking-widest text-stone-400">{{ item.label }}</p>
-                  <p class="text-sm font-black text-stone-900">{{ item.value }}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          <div class="w-full shrink-0 self-center lg:w-48 lg:self-auto">
-             <button class="group flex w-full items-center justify-center gap-2 rounded-[1.4rem] bg-indigo-50 py-3.5 text-sm font-black text-indigo-600 shadow-sm transition-all hover:bg-indigo-600 hover:text-white sm:rounded-3xl sm:py-4">
-                启动AI分析
-                <ArrowRight class="w-4 h-4 transition-transform group-hover:translate-x-1" />
-             </button>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- 4. 探索更多潜力区域 -->
+    <!-- 探索更多潜力区域 -->
     <section class="space-y-4 pt-2">
       <div class="flex flex-col items-center justify-center gap-3 px-1 sm:flex-row sm:justify-between">
         <div class="flex items-center justify-center gap-2.5">
@@ -597,30 +792,50 @@ const handleFileChange = async (event: Event) => {
                       <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-300" />
                       <input
                         type="text"
-                        placeholder="搜索地铁、商区、写字楼、商业入口"
-                        class="w-full rounded-xl border border-stone-200 bg-white py-2.5 pl-9 pr-3 text-xs font-semibold text-stone-700 outline-none focus:border-amber-300"
-                        @input="e => searchQuery = (e.target as HTMLInputElement).value"
+                        placeholder="搜索地点名称..."
+                        :value="searchQuery"
+                        class="w-full rounded-xl border border-stone-200 bg-white py-2.5 pl-9 pr-12 text-xs font-semibold text-stone-700 outline-none focus:border-amber-300"
+                        @input="e => { searchQuery = (e.target as HTMLInputElement).value; fetchSuggestions(); }"
+                        @keyup.enter="searchMap"
                       />
+                      <button @click="searchMap" class="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg bg-amber-500 text-white px-2 py-1 text-[10px] font-bold hover:bg-amber-600">搜索</button>
+                      <!-- 搜索建议下拉 -->
+                      <div v-if="searchSuggestions.length" class="absolute top-full left-0 right-0 mt-1 bg-white border border-stone-200 rounded-xl shadow-lg z-50 max-h-40 overflow-y-auto">
+                        <div v-for="(s, i) in searchSuggestions" :key="i" @click="selectSuggestion(s)"
+                          class="px-3 py-2 text-xs font-medium text-stone-700 hover:bg-amber-50 cursor-pointer border-b border-stone-50 last:border-0">
+                          <div class="font-bold">{{ s.name }}</div>
+                          <div class="text-[10px] text-stone-400">{{ s.address }}</div>
+                        </div>
+                      </div>
+                    </div>
+                    <!-- 已选地址 -->
+                    <div v-if="searchAddress" class="mt-2 text-[11px] font-bold text-amber-600 bg-amber-50 rounded-lg px-3 py-1.5">
+                      📍 {{ searchAddress }}
                     </div>
 
                     <div class="mt-3 flex flex-wrap gap-2">
                       <button
-                        v-for="loc in mockLocations.filter(loc => !searchQuery || loc.name.includes(searchQuery))"
+                        v-for="loc in mockLocations"
                         :key="loc.name"
-                        @click="selectedAreaName = loc.name; selectedCoordinate = { latitude: loc.latitude, longitude: loc.longitude }"
+                        @click="selectedAreaName = loc.name; selectedCoordinate = { latitude: loc.latitude, longitude: loc.longitude }; searchAddress = loc.name"
                         :class="['rounded-full border px-3 py-1.5 text-[11px] font-bold', selectedAreaName === loc.name ? 'border-amber-400 bg-amber-50 text-amber-700' : 'border-stone-200 bg-white text-stone-500']"
                       >
                         {{ loc.name }}
                       </button>
                     </div>
 
-                    <div class="mt-3 overflow-hidden rounded-xl border border-stone-200 bg-stone-50">
-                      <img
-                        src="https://images.unsplash.com/photo-1569336415962-a4bd9f69cd83?q=80&w=1200&auto=format&fit=crop"
-                        alt="map"
-                        class="h-28 w-full object-cover"
-                        referrerpolicy="no-referrer"
-                      />
+                    <div ref="mapContainerRef" class="mt-3 overflow-hidden rounded-xl border border-stone-200 bg-stone-50 h-40 sm:h-52 relative">
+                      <div v-if="!mapLoaded" class="absolute inset-0 flex items-center justify-center text-xs text-stone-400 bg-stone-100">地图加载中...</div>
+                    </div>
+                    <!-- 位置信息卡片 -->
+                    <div class="mt-2 rounded-xl border border-amber-100 bg-amber-50/50 px-3 py-2">
+                      <div class="flex items-center gap-1.5 mb-1">
+                        <MapPin class="h-3.5 w-3.5 shrink-0" :class="locationName.includes('失败') ? 'text-red-400' : 'text-amber-500'" />
+                        <p class="text-xs font-black truncate" :class="locationName.includes('失败') ? 'text-red-600' : 'text-stone-800'">{{ locationName }}</p>
+                      </div>
+                      <p class="text-[10px] font-bold text-stone-400">
+                        经度: {{ selectedCoordinate.longitude.toFixed(6) }} &nbsp; 纬度: {{ selectedCoordinate.latitude.toFixed(6) }}
+                      </p>
                     </div>
                   </section>
 

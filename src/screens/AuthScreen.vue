@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue';
+import { useRouter } from 'vue-router';
 import {
   Smartphone,
   ShieldCheck,
@@ -11,36 +12,15 @@ import {
   EyeOff
 } from 'lucide-vue-next';
 import AgreementModal from '../components/AgreementModal.vue';
-import { buildApiUrl } from '../utils/api';
 import { showToast } from '../composables/useToast';
+import { useAuthStore } from '../stores/auth';
 import backgroundVideo from '../../烟火气.mp4';
+
+const router = useRouter();
+const authStore = useAuthStore();
 
 
 type LoginMode = 'code' | 'password';
-
-interface AuthSession {
-  token: string;
-  merchantId: string;
-  merchantName: string;
-  phone: string;
-  onboardingStatus: string;
-  expiresAt: string;
-  roles: string[];
-}
-
-interface ApiResponse<T> {
-  success: boolean;
-  message?: string;
-  data?: T;
-}
-
-const AUTH_TOKEN_KEY = 'stall_auth_token';
-const AUTH_SESSION_KEY = 'stall_auth_session';
-
-
-const emit = defineEmits<{
-  (event: 'login', payload: AuthSession): void;
-}>();
 
 const isLogin = ref(true);
 const loginMode = ref<LoginMode>('code');
@@ -76,52 +56,6 @@ const fillRegisterSmsCode = () => {
   showToast('info', '验证码', '验证码已发送，请查收');
 };
 
-const requestAuth = async <T,>(path: string, body?: unknown, token?: string): Promise<T> => {
-  const response = await fetch(buildApiUrl(path), {
-
-    method: body ? 'POST' : 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {})
-    },
-    body: body ? JSON.stringify(body) : undefined
-  });
-
-  let payload: ApiResponse<T> | null = null;
-  try {
-    payload = (await response.json()) as ApiResponse<T>;
-  } catch (error) {
-    if (!response.ok) {
-      throw new Error('服务暂时不可用，请稍后再试');
-    }
-  }
-
-  if (!response.ok || !payload?.success || !payload.data) {
-    throw new Error(payload?.message || '服务暂时不可用，请稍后再试');
-  }
-  return payload.data;
-};
-
-const resolveUiErrorMessage = (error: unknown, fallback: string) => {
-  if (!(error instanceof Error) || !error.message) {
-    return fallback;
-  }
-  const raw = error.message.trim();
-  if (!raw) {
-    return fallback;
-  }
-  const technicalPattern = /(request|failed|fetch|network|undefined|sha256|error|exception|sql|timeout|token|reference|authsession|请求失败)/i;
-  if (technicalPattern.test(raw) || /[A-Za-z]{3,}/.test(raw)) {
-    return fallback;
-  }
-  return raw.length > 24 ? fallback : raw;
-};
-
-const persistSession = (session: AuthSession) => {
-  localStorage.setItem(AUTH_TOKEN_KEY, session.token);
-  localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session));
-};
-
 const onLogin = async () => {
   if (loading.value) {
     return;
@@ -145,16 +79,11 @@ const onLogin = async () => {
 
   loading.value = true;
   try {
-    const session = await requestAuth<AuthSession>('/api/auth/login', {
-      phone,
-      loginMode: loginMode.value,
-      credential
-    });
-    persistSession(session);
+    await authStore.login(phone, credential, loginMode.value);
     showToast('success', '登录成功', '欢迎回来！');
-    emit('login', session);
+    router.push('/dashboard');
   } catch (error) {
-    showToast('error', '登录失败', resolveUiErrorMessage(error, '请核对账号信息后重试'));
+    showToast('error', '登录失败', error instanceof Error ? error.message : '请核对账号信息后重试');
   } finally {
     loginCredential.value = '';
     showLoginPassword.value = false;
@@ -192,17 +121,11 @@ const onRegister = async () => {
 
   loading.value = true;
   try {
-    const session = await requestAuth<AuthSession>('/api/auth/register', {
-      phone,
-      smsCode,
-      password,
-      confirmPassword
-    });
-    persistSession(session);
+    await authStore.register(phone, smsCode, password, confirmPassword);
     showToast('success', '注册成功', '已自动登录，欢迎加入！');
-    emit('login', session);
+    router.push('/dashboard');
   } catch (error) {
-    showToast('error', '注册失败', resolveUiErrorMessage(error, '请检查信息后重试'));
+    showToast('error', '注册失败', error instanceof Error ? error.message : '请检查信息后重试');
   } finally {
     registerPassword.value = '';
     registerConfirmPassword.value = '';
@@ -355,7 +278,7 @@ const switchToLogin = () => {
               <label for="agreement-login" class="text-[9px] font-medium leading-relaxed text-stone-400 sm:text-[11px]">
                 我已阅读并同意
                 <span @click.prevent="activeAgreement = 'user'" class="cursor-pointer text-amber-600 hover:underline">《用户协议》</span>
-                和
+                和  
                 <span @click.prevent="activeAgreement = 'privacy'" class="cursor-pointer text-amber-600 hover:underline">《隐私政策》</span>
               </label>
             </div>
@@ -409,6 +332,7 @@ const switchToLogin = () => {
                   v-model="registerPhone"
                   type="tel"
                   placeholder="请输入手机号"
+                  autocomplete="off"
                   class="h-10 w-full bg-transparent pl-10 pr-3.5 text-[13px] font-medium text-stone-900 outline-none placeholder:text-stone-300 sm:h-12 sm:pl-11 sm:pr-4 sm:text-sm"
                 />
               </div>
@@ -441,6 +365,7 @@ const switchToLogin = () => {
                   v-model="registerPassword"
                   :type="showRegisterPassword ? 'text' : 'password'"
                   placeholder="请设置6-16位密码"
+                  autocomplete="new-password"
                   class="h-10 w-full bg-transparent px-3.5 pr-10 text-[13px] font-medium text-stone-900 outline-none placeholder:text-stone-300 sm:h-12 sm:px-4 sm:pr-11 sm:text-sm"
                 />
                 <button
@@ -462,6 +387,7 @@ const switchToLogin = () => {
                   v-model="registerConfirmPassword"
                   :type="showRegisterConfirmPassword ? 'text' : 'password'"
                   placeholder="请再次输入密码"
+                  autocomplete="new-password"
                   class="h-10 w-full bg-transparent px-3.5 pr-10 text-[13px] font-medium text-stone-900 outline-none placeholder:text-stone-300 sm:h-12 sm:px-4 sm:pr-11 sm:text-sm"
                 />
                 <button

@@ -11,11 +11,13 @@ import {
   Trophy,
   Activity,
   Plus,
-  Eye,
-  ArrowUpRight
+  MapPin
 } from 'lucide-vue-next';
 import { buildApiUrl } from '../utils/api';
 import stallCartImage from '../../摊位车.png';
+import { useLocationStore } from '../stores/location';
+
+const locationStore = useLocationStore();
 
 const props = defineProps<{
   merchantName?: string;
@@ -45,7 +47,7 @@ const dashboardKpis = ref([
   { label: '今日收入', value: '¥ --', icon: CircleDollarSign, color: 'text-amber-600', bg: 'bg-amber-100/50', trend: '--', trendUp: true },
   { label: '售出商品', value: '--', icon: Activity, color: 'text-emerald-600', bg: 'bg-emerald-100/50', trend: '--', trendUp: true },
   { label: '今日订单', value: '--', icon: Trophy, color: 'text-blue-600', bg: 'bg-blue-100/50', trend: '--', trendUp: true, isRank: true },
-  { label: '数据模式', value: 'MySQL', icon: Eye, color: 'text-indigo-600', bg: 'bg-indigo-100/50', trend: '已接入', trendUp: true },
+  { label: '转化率', value: '--', icon: TrendingUp, color: 'text-indigo-600', bg: 'bg-indigo-100/50', trend: '售出件数/订单数', trendUp: true },
 ]);
 
 const fetchDashboard = async () => {
@@ -60,6 +62,7 @@ const fetchDashboard = async () => {
       if (metrics.length >= 1) { dashboardKpis.value[0].value = metrics[0].value; dashboardKpis.value[0].trend = metrics[0].trend || '--'; dashboardKpis.value[0].trendUp = metrics[0].trendUp !== false; }
       if (metrics.length >= 2) { dashboardKpis.value[1].value = metrics[1].value; dashboardKpis.value[1].trend = metrics[1].trend || '--'; dashboardKpis.value[1].trendUp = metrics[1].trendUp !== false; }
       if (metrics.length >= 3) { dashboardKpis.value[2].value = metrics[2].value; dashboardKpis.value[2].trend = metrics[2].trend || '--'; dashboardKpis.value[2].trendUp = metrics[2].trendUp !== false; }
+      if (metrics.length >= 4) { dashboardKpis.value[3].value = metrics[3].value; dashboardKpis.value[3].trend = metrics[3].trend || '--'; dashboardKpis.value[3].trendUp = metrics[3].trendUp !== false; }
     }
   } catch { /* keep fallback */ }
 };
@@ -100,9 +103,9 @@ onUnmounted(() => {
             </p>
           </div>
 
-          <div class="grid grid-cols-2 gap-2.5 pt-1 md:gap-3 md:pt-0 lg:max-w-[32rem]">
-            <div class="rounded-[1.05rem] border border-white/70 bg-white/72 px-3 py-2.5 shadow-[0_10px_24px_rgba(0,0,0,0.04)] backdrop-blur-sm md:rounded-[1.15rem] md:px-3.5 md:py-3">
-              <div class="flex items-center gap-2.5 md:gap-3">
+          <!-- <div class="grid grid-cols-3 gap-2.5 pt-1 md:gap-3 md:pt-0 lg:max-w-[36rem]">
+            <div class="rounded-[1.05rem] border border-white/70 bg-white/72 px-3 py-2.5 shadow-[0_10px_24px_rgba(0,0,0,0.04)] backdrop-blur-sm md:rounded-[1.15rem] md:px-3.5 md:py-3 h-full">
+              <div class="flex items-center gap-2.5 md:gap-3 h-full">
                 <div class="flex h-8 w-8 items-center justify-center rounded-[0.9rem] bg-amber-400 shadow-lg shadow-amber-400/15 md:h-9 md:w-9 md:rounded-[0.95rem]">
                   <Sun class="h-4 w-4 fill-white text-white md:h-4.5 md:w-4.5" />
                 </div>
@@ -112,19 +115,91 @@ onUnmounted(() => {
                 </div>
               </div>
             </div>
-            <div class="relative overflow-hidden rounded-[1.05rem] border border-white/70 bg-white/72 px-3 py-2.5 shadow-[0_10px_24px_rgba(0,0,0,0.04)] backdrop-blur-sm md:rounded-[1.15rem] md:px-3.5 md:py-3">
-              <div class="space-y-1 text-left">
-                <p class="text-[9px] font-bold uppercase tracking-[0.12em] text-amber-700/65 md:text-[10px] md:tracking-[0.14em]">推荐出摊时段</p>
-                <p class="text-[13px] font-black leading-none text-stone-900 md:text-[1.05rem]">17:00 - 22:00</p>
-              </div>
-              <div class="pointer-events-none absolute bottom-2.5 right-2.5 flex h-6 w-10 items-end opacity-50 md:bottom-3 md:right-3 md:h-7 md:w-11">
-                <Clock3 class="h-3 w-3 text-amber-400 md:h-3.5 md:w-3.5" />
-                <svg viewBox="0 0 100 40" class="ml-1 h-full w-full fill-current text-amber-400/70">
-                  <path d="M0,40 L10,35 C20,25 30,38 40,30 C50,15 65,35 80,10 C90,5 100,20 100,20 L100,40 Z" />
-                </svg>
+            <div class="rounded-[1.05rem] border border-white/70 bg-white/72 px-3 py-2.5 shadow-[0_10px_24px_rgba(0,0,0,0.04)] backdrop-blur-sm md:rounded-[1.15rem] md:px-3.5 md:py-3 h-full">
+              <div class="flex items-center gap-2.5 md:gap-3 h-full">
+                <div class="flex h-8 w-8 items-center justify-center rounded-[0.9rem] bg-amber-400 shadow-lg shadow-amber-400/15 md:h-9 md:w-9 md:rounded-[0.95rem]">
+                  <Clock3 class="h-4 w-4 text-white md:h-4.5 md:w-4.5" />
+                </div>
+                <div class="min-w-0 text-left">
+                  <p class="text-[9px] font-bold uppercase tracking-[0.12em] text-stone-400 md:text-[10px] md:tracking-[0.14em]">推荐出摊时段</p>
+                  <p class="mt-1 text-[13px] font-black leading-none text-stone-900 md:text-[1.05rem]">17:00 - 22:00</p>
+                </div>
               </div>
             </div>
-          </div>
+            <div @click="locateMe" class="cursor-pointer rounded-[1.05rem] border border-white/70 bg-white/72 px-3 py-2.5 shadow-[0_10px_24px_rgba(0,0,0,0.04)] backdrop-blur-sm hover:shadow-md transition-all md:rounded-[1.15rem] md:px-3.5 md:py-3 h-full">
+              <div class="flex items-center gap-2.5 md:gap-3 h-full">
+                <div class="flex h-8 w-8 items-center justify-center rounded-[0.9rem] bg-amber-400 shadow-lg shadow-amber-400/15 md:h-9 md:w-9 md:rounded-[0.95rem]">
+                  <MapPin class="h-4 w-4 fill-white text-white md:h-4.5 md:w-4.5" />
+                </div>
+                <div class="min-w-0 text-left">
+                  <p class="text-[9px] font-bold uppercase tracking-[0.12em] text-stone-400 md:text-[10px] md:tracking-[0.14em]">{{ locatingMe ? '定位中...' : '我的位置' }}</p>
+                  <p class="mt-1 text-[13px] font-black leading-none text-stone-900 truncate md:text-[1.05rem]">{{ userLocation || '点击定位' }}</p>
+                </div>
+              </div>
+            </div>
+          </div> -->
+              <div class="mt-3 flex flex-wrap items-center gap-2">
+                <!-- 温度 -->
+                <div
+                  class="flex h-9 items-center gap-1.5 rounded-full
+                  border border-stone-100
+                  bg-white/85
+                  px-3
+                  shadow-sm">
+              
+                  <Sun class="h-3.5 w-3.5 text-amber-500" />
+              
+                  <span class="text-[13px] font-medium text-stone-700">
+                    26°C 适合出摊
+                  </span>
+                </div>
+
+                <!-- 时间 -->
+                <div
+                  class="flex h-9 items-center gap-1.5 rounded-full
+                  border border-stone-100
+                  bg-white/85
+                  px-3
+                  shadow-sm">
+              
+                  <Clock3 class="h-3.5 w-3.5 text-amber-500" />
+              
+                  <span class="text-[13px] font-medium text-stone-700">
+                    17:00 - 22:00
+                  </span>
+              
+                  <span
+                    class="rounded-full
+                    bg-orange-50
+                    px-1.5 py-[2px]
+                    text-[10px]
+                    font-semibold
+                    text-orange-600">
+              
+                    高峰
+                  </span>
+                </div>
+
+                <!-- 定位 -->
+                <div
+                  @click="locationStore.locateMe"
+                  class="flex h-9 cursor-pointer items-center gap-1.5 rounded-full px-3 shadow-sm transition-all hover:shadow"
+                  :class="locationStore.locateFailed
+                    ? 'border-red-200/60 bg-red-50/40 hover:bg-red-50'
+                    : locationStore.displayAddress
+                      ? 'border-emerald-200/60 bg-emerald-50/40 hover:bg-emerald-50'
+                      : 'border-amber-200/60 bg-amber-50/40 hover:bg-amber-50'">
+
+                  <MapPin class="h-3.5 w-3.5 shrink-0"
+                    :class="locationStore.locatingMe ? 'animate-bounce' : ''"
+                    :style="{ color: locationStore.locateFailed ? '#ef4444' : (locationStore.displayAddress ? '#10b981' : '#f59e0b') }" />
+
+                  <span class="max-w-[160px] truncate text-[13px] font-semibold"
+                    :class="locationStore.locateFailed ? 'text-red-600' : (locationStore.displayAddress ? 'text-emerald-800' : 'text-amber-700')">
+                    {{ locationStore.locatingMe ? '定位中...' : (locationStore.locateFailed ? '定位失败' : (locationStore.displayAddress || '点击定位')) }}
+                  </span>
+                </div>
+           </div>
         </div>
       </div>
 

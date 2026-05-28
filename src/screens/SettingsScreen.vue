@@ -43,6 +43,7 @@ interface StallDetail {
 const profileName = ref('加载中...');
 const totalRevenue = ref('¥ --');
 const boothLocation = ref('--');
+const trackInventory = ref(false);
 const stallDays = ref('--');
 const avatarUrl = ref('');
 const coverUrl = ref('');
@@ -84,6 +85,7 @@ const fetchOverview = async () => {
         avatarUrl.value = p.avatarUrl || '';
         bio.value = p.description || '';
         vipTag.value = p.vipTag || 'LOCAL';
+        trackInventory.value = p.trackInventory === true;
       }
       coverUrl.value = payload.data.coverMedia?.coverUrl || '';
       const stats = payload.data.stats || [];
@@ -209,6 +211,15 @@ const openStallModal = async () => {
     }
   } catch { /* keep default */ }
   showStallModal.value = true;
+};
+
+const toggleInventory = async () => {
+  const newVal = !trackInventory.value;
+  try {
+    const resp = await fetch(buildApiUrl(`/api/settings/inventory?track=${newVal}`), { method: 'PUT', headers: authHeaders() });
+    const payload = await resp.json();
+    if (payload.success) { trackInventory.value = newVal; showToast('success', '已更新', newVal ? '库存记录已开启' : '库存记录已关闭'); }
+  } catch { showToast('error', '更新失败', ''); }
 };
 
 const handleAction = (actionKey: string) => {
@@ -344,6 +355,21 @@ onMounted(() => { fetchOverview(); });
           </div>
         </div>
         <ChevronRight class="h-4 w-4 text-stone-300" />
+      </div>
+
+      <div class="flex items-center justify-between rounded-2xl border border-stone-100 bg-white p-4 cursor-pointer hover:bg-stone-50 transition-colors" @click="toggleInventory">
+        <div class="flex items-center gap-3">
+          <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-stone-50">
+            <Store class="h-4 w-4 text-stone-500" />
+          </div>
+          <div class="text-left">
+            <p class="text-sm font-bold text-stone-900">记录库存数量</p>
+            <p class="text-[11px] text-stone-400">{{ trackInventory ? '已开启' : '已关闭' }}</p>
+          </div>
+        </div>
+        <div :class="['w-10 h-5 rounded-full relative transition-colors', trackInventory ? 'bg-green-500' : 'bg-stone-300']">
+          <div :class="['absolute top-1 w-3 h-3 bg-white rounded-full shadow-sm transition-all', trackInventory ? 'right-1' : 'left-1']" />
+        </div>
       </div>
 
       <div

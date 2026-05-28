@@ -5,12 +5,11 @@ import {
   ClipboardCheck,
   History,
   Minus,
-  PencilLine,
   Plus,
   RefreshCw,
   ShoppingCart,
+  Store,
   Trash2,
-  Wallet
 } from 'lucide-vue-next';
 import { buildApiUrl } from '../utils/api';
 import { showToast } from '../composables/useToast';
@@ -22,6 +21,8 @@ const emit = defineEmits<{
 const props = defineProps<{
   onBack?: () => void;
 }>();
+
+const trackInventory = ref(false);
 
 const noStall = ref(false);
 
@@ -38,6 +39,9 @@ interface ManualProduct {
   price: number;
   stock: number;
   imageUrl?: string | null;
+  discountPercent?: number;
+  buyM?: number;
+  getN?: number;
 }
 
 interface ManualOrderHistoryItem {
@@ -96,9 +100,20 @@ const products = ref<ManualProduct[]>([]);
 const historyOrders = ref<ManualOrderHistoryOrder[]>([]);
 
 const cart = ref<Record<number, number>>({});
-const orderStage = ref<'draft' | 'pending_payment'>('draft');
-const pendingOrderNo = ref('');
-const pendingCreatedAt = ref('');
+const editingOrderNo = ref('');
+
+const loadOrderToCart = (order: ManualOrderHistoryOrder) => {
+  cart.value = {};
+  order.items.forEach(item => {
+    cart.value[item.productId] = item.quantity;
+  });
+  editingOrderNo.value = order.orderNo;
+  showToast('info', '修改订单', `正在修改订单 ${order.orderNo}`);
+};
+
+const clearEditingOrder = () => {
+  editingOrderNo.value = '';
+};
 
 const authHeaders = () => {
   const token = localStorage.getItem('stall_auth_token') || '';
@@ -128,13 +143,14 @@ const cartItems = computed(() => {
     .map(([id, quantity]) => {
       const product = products.value.find((p) => p.id === Number(id));
       if (!product || quantity <= 0) return null;
+      const effectivePrice = product.discountPercent ? Number((product.price * product.discountPercent / 100).toFixed(2)) : product.price;
       return {
         id: product.id,
         name: product.name,
-        price: product.price,
+        price: effectivePrice,
         quantity,
         stock: product.stock,
-        subtotalCents: product.price * 100 * quantity
+        subtotalCents: effectivePrice * 100 * quantity
       };
     })
     .filter(
@@ -147,8 +163,6 @@ const cartItems = computed(() => {
 const cartTotalCents = computed(() => cartItems.value.reduce((sum, item) => sum + item.subtotalCents, 0));
 const cartTotalText = computed(() => `¥${(cartTotalCents.value / 100).toFixed(2)}`);
 const cartCount = computed(() => cartItems.value.reduce((sum, item) => sum + item.quantity, 0));
-const hasPendingOrder = computed(() => !!pendingOrderNo.value && orderStage.value === 'pending_payment');
-
 const sortedHistoryOrders = computed(() => {
   const toMs = (value?: string | null) => {
     if (!value) return 0;
@@ -159,15 +173,9 @@ const sortedHistoryOrders = computed(() => {
 });
 
 
-const clearPendingOrder = () => {
-  orderStage.value = 'draft';
-  pendingOrderNo.value = '';
-  pendingCreatedAt.value = '';
-};
-
-const clearCart = (resetPending = true) => {
+const clearCart = () => {
   cart.value = {};
-  if (resetPending) clearPendingOrder();
+  clearEditingOrder();
 };
 
 const findProduct = (productId: number) => products.value.find((p) => p.id === productId);
@@ -179,7 +187,7 @@ const addToCart = (productId: number) => {
     return;
   }
   const nextQty = (cart.value[productId] || 0) + 1;
-  if (nextQty > product.stock) {
+  if (trackInventory.value && nextQty > product.stock) {
     showToast('error', '错误','已达到库存上限');
     return;
   }
@@ -201,7 +209,7 @@ const incCart = (productId: number) => {
     return;
   }
   const nextQty = (cart.value[productId] || 0) + 1;
-  if (nextQty > product.stock) {
+  if (trackInventory.value && nextQty > product.stock) {
     showToast('error', '错误','已达到库存上限');
     return;
   }
@@ -250,64 +258,55 @@ const fetchHistory = async () => {
   }
 };
 
-const completeOrder = () => {
-  if (!cartItems.value.length) {
-    showToast('error', '错误','请先选择商品再完成订单');
-    return;
-  }
-  if (!pendingOrderNo.value) {
-    pendingOrderNo.value = `TEMP-${Date.now().toString().slice(-8)}`;
-  }
-  pendingCreatedAt.value = new Date().toLocaleString();
-  orderStage.value = 'pending_payment';
-  showToast('success', '成功','已生成待支付订单，可继续修改后再确认支付');
-};
-
-const editPendingOrder = () => {
-  if (!hasPendingOrder.value) return;
-  showToast('success', '成功','已进入修改订单状态，可继续调整商品数量');
-};
-
-const confirmPayment = async () => {
-  if (!hasPendingOrder.value) {
-    showToast('error', '错误','请先点击“完成订单”生成待支付记录');
-    return;
-  }
-
-  if (!cartItems.value.length) {
-    showToast('error', '错误','待支付订单为空，请先添加商品');
-    return;
-  }
-
+const submitOrder = async () => {
+  if (!cartItems.value.length) { showToast('error', '错误','请先选择商品'); return; }
   paying.value = true;
   try {
-    const resp = await fetch(buildApiUrl('/api/orders/manual/checkout'), {
-
-      method: 'POST',
-      headers: authHeaders(),
-      body: JSON.stringify({
-        remark: `前台手动点单（${pendingOrderNo.value}）`,
-        items: cartItems.value.map((item) => ({
-          productId: item.id,
-          quantity: item.quantity
-        }))
-      })
-
-    });
-    const payload = (await resp.json()) as ApiResponse<{ orderNo: string }>;
-    if (!resp.ok || !payload.success) {
-      throw new Error(payload.message || '支付失败');
+    // 如果是修改订单，先取消旧订单
+    if (editingOrderNo.value) {
+      const cancelResp = await fetch(buildApiUrl(`/api/orders/manual/${editingOrderNo.value}/cancel`), { method: 'PUT', headers: authHeaders() });
+      const cancelPayload = (await cancelResp.json()) as ApiResponse<unknown>;
+      if (!cancelResp.ok || !cancelPayload.success) throw new Error(cancelPayload.message || '取消旧订单失败');
     }
 
-    showToast('success', '成功',`支付成功，订单 ${payload.data?.orderNo || ''} 已入库`);
-    clearCart(true);
+    const resp = await fetch(buildApiUrl('/api/orders/manual/checkout'), {
+      method: 'POST', headers: authHeaders(),
+      body: JSON.stringify({
+        remark: '前台手动点单',
+        items: cartItems.value.map((item) => ({ productId: item.id, quantity: item.quantity }))
+      })
+    });
+    const payload = (await resp.json()) as ApiResponse<{ orderNo: string }>;
+    if (!resp.ok || !payload.success) throw new Error(payload.message || '下单失败');
+    showToast('success', '成功',`订单 ${payload.data?.orderNo || ''} 已生成`);
+    clearCart();
+    clearEditingOrder();
     await fetchProducts();
     await fetchHistory();
-  } catch (err) {
-    showToast('error', '错误',err instanceof Error ? err.message : '支付失败');
-  } finally {
-    paying.value = false;
-  }
+  } catch (err) { showToast('error', '错误',err instanceof Error ? err.message : '下单失败'); }
+  finally { paying.value = false; }
+};
+
+const payOrder = async (orderNo: string) => {
+  try {
+    const resp = await fetch(buildApiUrl(`/api/orders/manual/${orderNo}/pay`), { method: 'PUT', headers: authHeaders() });
+    const payload = (await resp.json()) as ApiResponse<unknown>;
+    if (!resp.ok || !payload.success) throw new Error(payload.message || '支付失败');
+    showToast('success', '成功',`订单 ${orderNo} 已支付`);
+    await fetchProducts();
+    await fetchHistory();
+  } catch (err) { showToast('error', '错误',err instanceof Error ? err.message : '支付失败'); }
+};
+
+const cancelOrder = async (orderNo: string) => {
+  try {
+    const resp = await fetch(buildApiUrl(`/api/orders/manual/${orderNo}/cancel`), { method: 'PUT', headers: authHeaders() });
+    const payload = (await resp.json()) as ApiResponse<unknown>;
+    if (!resp.ok || !payload.success) throw new Error(payload.message || '取消失败');
+    showToast('success', '成功',`订单 ${orderNo} 已取消`);
+    await fetchProducts();
+    await fetchHistory();
+  } catch (err) { showToast('error', '错误',err instanceof Error ? err.message : '取消失败'); }
 };
 
 onMounted(async () => {
@@ -319,6 +318,11 @@ onMounted(async () => {
       return;
     }
   } catch { /* proceed */ }
+  try {
+    const sr = await fetch(buildApiUrl('/api/settings/overview'), { headers: authHeaders() });
+    const sp = await sr.json();
+    if (sp.success && sp.data?.profile) trackInventory.value = sp.data.profile.trackInventory === true;
+  } catch { /* default false */ }
   await Promise.all([fetchProducts(), fetchHistory()]);
 });
 </script>
@@ -403,9 +407,16 @@ onMounted(async () => {
             </div>
             <div class="p-3">
               <h3 class="text-sm font-black text-stone-900 truncate">{{ product.name }}</h3>
-              <p class="mt-1 text-xs text-stone-400">{{ product.type }} · 库存 {{ product.stock }}</p>
+              <p class="mt-1 text-xs text-stone-400">{{ product.type }}<template v-if="trackInventory"> · 库存 {{ product.stock }}</template></p>
+              <div v-if="product.discountPercent || (product.buyM && product.getN)" class="mb-1">
+                <span v-if="product.discountPercent" class="text-[10px] font-bold text-white bg-red-500 rounded-full px-1.5 py-0.5">{{ (product.discountPercent / 10) }}折</span>
+                <span v-if="product.buyM && product.getN" class="text-[10px] font-bold text-white bg-orange-500 rounded-full px-1.5 py-0.5" :class="product.discountPercent ? 'ml-1' : ''">买{{ product.buyM }}送{{ product.getN }}</span>
+              </div>
               <div class="mt-2 flex items-center justify-between">
-                <p class="text-base font-black text-orange-500">¥{{ product.price }}</p>
+                <div>
+                  <p v-if="product.discountPercent" class="text-xs text-slate-400 line-through">¥{{ product.price }}</p>
+                  <p class="text-base font-black text-orange-500">¥{{ product.discountPercent ? (product.price * product.discountPercent / 100).toFixed(2) : product.price }}</p>
+                </div>
                 <button
                   class="inline-flex items-center gap-1 rounded-lg bg-orange-500 px-2.5 py-1.5 text-xs font-bold text-white transition-colors hover:bg-orange-600"
                   @click.stop="addToCart(product.id)"
@@ -424,12 +435,6 @@ onMounted(async () => {
             <ShoppingCart class="h-4 w-4 text-orange-500" /> 订单控制台
           </h3>
           <span class="rounded-full bg-orange-50 px-2 py-1 text-xs font-bold text-orange-600">{{ cartCount }} 件</span>
-        </div>
-
-        <div class="rounded-xl border border-stone-200 bg-stone-50 p-2.5 text-xs">
-          <p class="font-bold text-stone-600">状态：{{ hasPendingOrder ? '待支付（可修改）' : '待结算' }}</p>
-          <p v-if="hasPendingOrder" class="mt-1 text-stone-500">订单号：{{ pendingOrderNo }}</p>
-          <p v-if="pendingCreatedAt" class="mt-1 text-stone-400">生成时间：{{ pendingCreatedAt }}</p>
         </div>
 
         <div v-if="!cartItems.length" class="rounded-xl bg-stone-50 p-3 text-xs text-stone-400">暂未选择商品</div>
@@ -465,40 +470,19 @@ onMounted(async () => {
             <span class="text-lg font-black text-stone-900">{{ cartTotalText }}</span>
           </div>
 
-          <div class="mb-2 flex gap-2">
-            <button
-              class="flex-1 rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-xs font-bold text-stone-600"
-              @click="clearCart(true)"
-            >
-              清空订单
-            </button>
-            <button
-              v-if="hasPendingOrder"
-              class="flex-1 rounded-lg border border-orange-200 bg-orange-50 px-2.5 py-1.5 text-xs font-bold text-orange-600"
-              @click="editPendingOrder"
-            >
-              <span class="inline-flex items-center gap-1"><PencilLine class="h-3.5 w-3.5" /> 修改订单</span>
-            </button>
-          </div>
-
-
-
           <button
-            v-if="!hasPendingOrder"
-            class="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-3 py-2 text-sm font-black text-white disabled:opacity-50 hover:bg-orange-600 transition-colors"
-            :disabled="!cartItems.length"
-            @click="completeOrder"
+            class="mb-2 w-full rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-xs font-bold text-stone-600 hover:bg-stone-50"
+            @click="clearCart"
           >
-            <ClipboardCheck class="h-4 w-4" /> 完成订单（生成待支付）
+            清空订单
           </button>
 
           <button
-            v-else
-            class="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-3 py-2 text-sm font-black text-white disabled:opacity-50"
+            class="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-3 py-2 text-sm font-black text-white disabled:opacity-50 hover:bg-orange-600 transition-colors"
             :disabled="paying || !cartItems.length"
-            @click="confirmPayment"
+            @click="submitOrder"
           >
-            <Wallet class="h-4 w-4" /> {{ paying ? '支付中...' : '确认支付（支付后入库）' }}
+            <ClipboardCheck class="h-4 w-4" /> {{ paying ? '提交中...' : (editingOrderNo ? '保存修改' : '完成订单') }}
           </button>
         </div>
       </aside>
@@ -508,20 +492,24 @@ onMounted(async () => {
       <h3 class="inline-flex items-center gap-2 text-base font-black text-stone-900">
         <History class="h-4 w-4 text-orange-500" /> 历史订单
       </h3>
-      <p class="mt-1 text-xs text-stone-400">按支付时间倒序，仅展示当前商家已完成交易</p>
+      <p class="mt-1 text-xs text-stone-400">按时间倒序，点击展开查看详情</p>
 
       <div v-if="loadingHistory" class="mt-3 text-sm text-stone-500">加载中...</div>
       <div v-else-if="!sortedHistoryOrders.length" class="mt-3 rounded-xl bg-stone-50 p-3 text-xs text-stone-400">暂无订单</div>
       <div v-else class="mt-3 space-y-2.5">
-        <details v-for="order in sortedHistoryOrders" :key="order.orderNo" class="rounded-xl border border-stone-200 p-3">
+        <details v-for="order in sortedHistoryOrders" :key="order.orderNo" class="rounded-xl border border-stone-200 p-3 group">
           <summary class="flex cursor-pointer list-none items-center justify-between gap-3">
             <div class="min-w-0">
               <p class="truncate text-sm font-black text-stone-900">{{ order.orderNo }}</p>
-              <p class="text-xs text-stone-400">支付时间：{{ order.paidAt || order.soldAt || '-' }}</p>
+              <div class="flex items-center gap-2 mt-0.5">
+                <span v-if="order.paymentStatus === 'PAID'" class="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">已支付</span>
+                <span v-else-if="order.orderStatus === 'CANCELLED'" class="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">已取消</span>
+                <span v-else class="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">待支付</span>
+                <p class="text-xs text-stone-400">{{ order.paidAt || order.soldAt || (order.orderStatus === 'CANCELLED' ? '已取消' : '--') }}</p>
+              </div>
             </div>
-            <div class="text-right">
+            <div class="text-right shrink-0">
               <p class="text-sm font-black text-orange-500">{{ order.totalAmount }}</p>
-              <p class="text-[11px] text-stone-500">{{ order.paymentStatus }} / {{ order.orderStatus }}</p>
             </div>
           </summary>
           <div class="mt-2 space-y-1.5 border-t border-stone-100 pt-2">
@@ -529,6 +517,11 @@ onMounted(async () => {
               <span>{{ item.productName }} x {{ item.quantity }}</span>
               <span>{{ item.lineAmount }}</span>
             </p>
+            <div v-if="order.paymentStatus !== 'PAID' && order.orderStatus !== 'CANCELLED'" class="pt-2 flex gap-2">
+              <button @click.stop="payOrder(order.orderNo)" class="flex-1 rounded-lg bg-orange-500 hover:bg-orange-600 text-white py-1.5 text-xs font-bold transition-colors">确认支付</button>
+              <button @click.stop="loadOrderToCart(order)" class="flex-1 rounded-lg bg-blue-500 hover:bg-blue-600 text-white py-1.5 text-xs font-bold transition-colors">修改订单</button>
+              <button @click.stop="cancelOrder(order.orderNo)" class="flex-1 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-600 py-1.5 text-xs font-bold transition-colors">取消</button>
+            </div>
           </div>
         </details>
       </div>
