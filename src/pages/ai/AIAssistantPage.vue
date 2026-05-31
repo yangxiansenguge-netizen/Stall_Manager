@@ -67,6 +67,11 @@ onMounted(() => {
         <AIQuickActions @action="handleQuickAction" />
       </template>
 
+      <div v-else-if="store.noData" class="flex flex-col items-center justify-center py-20 text-center">
+        <span class="text-5xl mb-4">📋</span>
+        <p class="text-sm font-bold text-stone-400">暂无足够经营数据</p>
+        <p class="text-xs text-stone-400 mt-1">请先申请摊位并添加商品，有订单数据后再来查看 AI 分析</p>
+      </div>
       <div v-else class="flex flex-col items-center justify-center py-20 text-center">
         <span class="text-5xl mb-4">📊</span>
         <p class="text-sm font-bold text-stone-400">暂无法获取分析数据</p>

@@ -21,6 +21,19 @@ const router = createRouter({
         { path: 'messages', name: 'messages', component: () => import('../views/MessagesView.vue') },
       ],
     },
+    // === 管理端路由 ===
+    {
+      path: '/admin',
+      component: () => import('../layouts/AdminLayout.vue'),
+      meta: { requiresAdmin: true },
+      children: [
+        { path: '', name: 'admin-dashboard', component: () => import('../views/admin/AdminDashboard.vue') },
+        { path: 'review', name: 'admin-review', component: () => import('../views/admin/StallReview.vue') },
+        { path: 'merchants', name: 'admin-merchants', component: () => import('../views/admin/MerchantList.vue') },
+        { path: 'messages', name: 'admin-messages', component: () => import('../views/admin/MessagePush.vue') },
+        { path: 'banner', name: 'admin-banner', component: () => import('../views/admin/BannerManage.vue') },
+      ],
+    },
   ],
 })
 
@@ -31,7 +44,10 @@ router.beforeEach(async (to, _from, next) => {
   const auth = useAuthStore()
 
   if (to.path === '/login') {
-    if (auth.isLoggedIn) return next('/dashboard')
+    if (auth.isLoggedIn) {
+      if (auth.session?.userType === 'admin') return next('/admin')
+      return next('/dashboard')
+    }
     return next()
   }
 
@@ -39,6 +55,13 @@ router.beforeEach(async (to, _from, next) => {
     await auth.checkAuth()
     if (!auth.isLoggedIn) return next('/login')
   }
+  // Admin 路由守卫
+  if (to.meta.requiresAdmin) {
+    if (auth.session?.userType !== 'admin') {
+      return next('/dashboard')
+    }
+  }
+
   next()
 })
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import {
   TrendingUp, Users, ShoppingBag, ArrowUpRight, ArrowDown, Timer, CheckCircle2,
   Lightbulb, ChevronRight, Plus, Bell, Store, X, UploadCloud, Send, Settings, Trash2,
@@ -317,9 +317,25 @@ const confirmDelete = async () => {
 
 const openDelete = (p: ProductItem) => { editProduct.value = p; showDeleteConfirm.value = true; };
 
+const goToAI = async () => {
+  try {
+    const token = localStorage.getItem('stall_auth_token') || ''
+    const resp = await fetch(buildApiUrl('/api/stalls/onboarding/status'), {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    const p = await resp.json()
+    if (p.success && p.data?.currentStatus === 'NONE') {
+      showToast('error', '暂无摊位', '请先申请入驻摊位后再使用 AI 分析')
+      return
+    }
+  } catch { /* 后端不通也允许进入 */ }
+  router.push('/ai')
+};
+
 const discountedPrice = (p: ProductItem) => p.discountPercent ? (p.price * p.discountPercent / 100).toFixed(2) : p.price;
 
 const route = useRoute();
+const router = useRouter();
 
 onMounted(async () => {
   await fetchBusiness(); await fetchProducts(); await fetchTrackInventory();
@@ -395,7 +411,7 @@ const productColors = ['bg-orange-50', 'bg-red-50', 'bg-amber-50', 'bg-emerald-5
               <p class="text-xs text-slate-400 leading-relaxed">建议保持热销商品库存充足，关注晚间高峰时段。</p>
             </template>
           </div>
-          <button @click="$router.push('/ai')" class="mt-5 sm:mt-8 w-full bg-orange-500 hover:bg-orange-600 text-white rounded-2xl py-3 sm:py-4 text-xs sm:text-sm font-black transition-all shadow-lg shadow-orange-400/40 hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2">
+          <button @click="goToAI" class="mt-5 sm:mt-8 w-full bg-orange-500 hover:bg-orange-600 text-white rounded-2xl py-3 sm:py-4 text-xs sm:text-sm font-black transition-all shadow-lg shadow-orange-400/40 hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2">
             查收经营建议 <ChevronRight class="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
         </div>

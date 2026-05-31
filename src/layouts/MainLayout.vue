@@ -26,7 +26,7 @@ onMounted(async () => {
 })
 
 const currentTab = computed(() => {
-  const map: Record<string, string> = { dashboard: 'home', stall: 'stall', business: 'business', settings: 'settings', messages: 'messages' }
+  const map: Record<string, string> = { dashboard: 'home', stall: 'stall', business: 'business', settings: 'settings', messages: 'messages', ai: 'business' }
   return map[route.name as string] || 'home'
 })
 

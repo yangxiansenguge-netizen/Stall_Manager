@@ -10,6 +10,8 @@ interface AuthSession {
   onboardingStatus: string
   expiresAt: string
   roles: string[]
+  userType: 'admin' | 'merchant'
+  role: string
 }
 
 const AUTH_TOKEN = 'stall_auth_token'

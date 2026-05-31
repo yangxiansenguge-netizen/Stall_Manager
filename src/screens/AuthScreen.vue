@@ -81,7 +81,7 @@ const onLogin = async () => {
   try {
     await authStore.login(phone, credential, loginMode.value);
     showToast('success', '登录成功', '欢迎回来！');
-    router.push('/dashboard');
+    router.push(authStore.session?.userType === 'admin' ? '/admin' : '/dashboard');
   } catch (error) {
     showToast('error', '登录失败', error instanceof Error ? error.message : '请核对账号信息后重试');
   } finally {

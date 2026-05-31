@@ -3,7 +3,12 @@ import { ref } from 'vue'
 import { buildApiUrl } from '../utils/api'
 import { showToast } from '../composables/useToast'
 
-const LOCATION_STORE_KEY = 'stall_personal_location'
+function getLocationKey(): string {
+  try {
+    const session = JSON.parse(localStorage.getItem('stall_auth_session') || '{}');
+    return 'stall_location_' + (session.merchantId || 'default');
+  } catch { return 'stall_location_default'; }
+}
 
 interface LocationCache {
   displayAddress: string
@@ -22,14 +27,14 @@ function haversine(lat1: number, lng1: number, lat2: number, lng2: number): numb
 
 function loadFromPersist(): LocationCache | null {
   try {
-    const raw = localStorage.getItem(LOCATION_STORE_KEY)
+    const raw = localStorage.getItem(getLocationKey())
     if (raw) return JSON.parse(raw)
   } catch { /* ignore */ }
   return null
 }
 
 function saveToPersist(cache: LocationCache) {
-  localStorage.setItem(LOCATION_STORE_KEY, JSON.stringify(cache))
+  localStorage.setItem(getLocationKey(), JSON.stringify(cache))
 }
 
 export const useLocationStore = defineStore('location', () => {

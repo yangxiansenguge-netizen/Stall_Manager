@@ -28,6 +28,7 @@ export const authApi = {
     return request<{
       token?: string; merchantId: string; merchantName: string; phone: string
       onboardingStatus: string; expiresAt: string; roles: string[]
+      userType: 'admin' | 'merchant'; role: string
     }>('/api/auth/profile', undefined, token)
   },
   login(phone: string, credential: string, mode: 'code' | 'password') {

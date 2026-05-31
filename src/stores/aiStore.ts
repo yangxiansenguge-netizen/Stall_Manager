@@ -8,6 +8,7 @@ export const useAIStore = defineStore('ai', () => {
   const report = ref<AIAnalysisResponse | null>(null)
   const dailyDecision = ref<AiDailyDecision | null>(null)
   const loading = ref(false)
+  const noData = ref(false)
   const drawerOpen = ref(false)
   const selectedSchemeIndex = ref(0)
   const draft = ref<ActionDraft | null>(null)
@@ -104,6 +105,13 @@ export const useAIStore = defineStore('ai', () => {
       ])
       dailyDecision.value = decision
       report.value = analysis
+      // 检查是否有足够数据
+      if (!analysis?.schemes || analysis.schemes.length === 0) {
+        noData.value = true
+        loading.value = false
+        return
+      }
+      noData.value = false
       // 从 DB 记录中恢复已应用状态
       appliedSchemes.value = new Set()
       analysis?.schemes?.forEach((s: any, i: number) => {
@@ -233,7 +241,7 @@ export const useAIStore = defineStore('ai', () => {
   }
 
   return {
-    report, dailyDecision, loading, drawerOpen, selectedSchemeIndex, draft, toastMessage, toastVisible,
+    report, dailyDecision, loading, noData, drawerOpen, selectedSchemeIndex, draft, toastMessage, toastVisible,
     planOpen, openPlan, closePlan,
     confirmOpen, confirmTitle, confirmDesc, openConfirm, closeConfirm, executeConfirm,
     drawerReasons, drawerProblem, drawerSchemes, appliedSchemes,

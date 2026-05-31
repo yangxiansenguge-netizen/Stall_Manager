@@ -1,7 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, shallowRef } from 'vue';
 import {
   Sun,
+  Cloud,
+  CloudRain,
+  CloudLightning,
+  CloudFog,
+  CloudSnow,
+  CloudDrizzle,
   ChevronRight,
   TrendingUp,
   Store,
@@ -18,6 +24,34 @@ import stallCartImage from '../../摊位车.png';
 import { useLocationStore } from '../stores/location';
 
 const locationStore = useLocationStore();
+const weather = ref('26°C 适合出摊');
+
+// 天气文字 → 图标映射
+const weatherIcon = shallowRef<any>(Sun);
+
+const updateWeatherIcon = (w: string) => {
+  if (w.includes('雷暴')) weatherIcon.value = CloudLightning;
+  else if (w.includes('雨') || w.includes('阵雨')) weatherIcon.value = CloudRain;
+  else if (w.includes('雪')) weatherIcon.value = CloudSnow;
+  else if (w.includes('雾')) weatherIcon.value = CloudFog;
+  else if (w.includes('多云')) weatherIcon.value = Cloud;
+  else if (w.includes('阴')) weatherIcon.value = Cloud;
+  else weatherIcon.value = Sun;
+};
+
+const fetchWeather = async () => {
+  console.log('[天气] 开始获取...');
+  try {
+    const token = localStorage.getItem('stall_auth_token') || '';
+    const url = buildApiUrl('/api/ai/weather');
+    console.log('[天气] 请求:', url);
+    const resp = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const p = await resp.json();
+    if (p.success && p.data) { weather.value = p.data; updateWeatherIcon(p.data); }
+  } catch { /* keep default */ }
+};
 
 const props = defineProps<{
   merchantName?: string;
@@ -69,6 +103,7 @@ const fetchDashboard = async () => {
 
 onMounted(() => {
   fetchDashboard();
+  fetchWeather();
   greetingTimer = setInterval(() => {
     currentTime.value = new Date();
   }, 30 * 1000);
@@ -147,11 +182,8 @@ onUnmounted(() => {
                   px-3
                   shadow-sm">
               
-                  <Sun class="h-3.5 w-3.5 text-amber-500" />
-              
-                  <span class="text-[13px] font-medium text-stone-700">
-                    26°C 适合出摊
-                  </span>
+                  <component :is="weatherIcon" class="h-3.5 w-3.5 text-amber-500" />
+                  <span class="text-[13px] font-medium text-stone-700">{{ weather }}</span>
                 </div>
 
                 <!-- 时间 -->
