@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { ref } from 'vue';
-import { 
-  Store, 
-  Search, 
-  Bell, 
-  ChevronDown 
+import { ref, onMounted } from 'vue';
+import {
+  Store,
+  Search,
+  Bell,
+  ChevronDown
 } from 'lucide-vue-next';
+import { buildApiUrl } from '../utils/api'
 
 defineProps<{
   onOpenMessages?: () => void;
@@ -13,8 +14,35 @@ defineProps<{
   avatarUrl?: string;
 }>();
 
+interface NotifItem {
+  id: number; title: string; content: string; time: string; category: string;
+}
+
 const showNotifications = ref(false);
-const notifications: { id: number; title: string; content: string; time: string; type: string }[] = [];
+const unreadCount = ref(0)
+const notifications = ref<NotifItem[]>([])
+
+const fetchNotifications = async () => {
+  try {
+    const token = localStorage.getItem('stall_auth_token') || ''
+    const resp = await fetch(buildApiUrl('/api/messages/center'), {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    const p = await resp.json()
+    if (p.success && p.data?.categories) {
+      const all: NotifItem[] = []
+      for (const cat of p.data.categories) {
+        for (const m of (cat.messages || [])) {
+          all.push({ id: m.id, title: m.title, content: m.content || '', time: m.time, category: cat.type })
+        }
+      }
+      notifications.value = all.slice(0, 5)
+      unreadCount.value = all.filter((m: any) => !m.read).length
+    }
+  } catch { }
+}
+
+onMounted(() => { fetchNotifications() })
 </script>
 
 <template>
@@ -46,7 +74,7 @@ const notifications: { id: number; title: string; content: string; time: string;
           class="relative rounded-full p-2 transition-colors hover:bg-stone-50 sm:p-2.5"
         >
           <Bell class="h-5 w-5 text-stone-900" />
-          <span v-if="notifications.length" class="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full border-2 border-white bg-rose-500 text-[8px] font-black text-white sm:right-2 sm:top-2">{{ notifications.length }}</span>
+          <span v-if="unreadCount > 0" class="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full border-2 border-white bg-rose-500 text-[8px] font-black text-white sm:right-2 sm:top-2">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
         </button>
 
         <div class="flex items-center gap-2 border-l border-stone-100 pl-2 sm:gap-3 sm:pl-4">

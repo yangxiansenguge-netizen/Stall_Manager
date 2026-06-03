@@ -27,6 +27,8 @@ const userStatus = ref<'none' | 'pending' | 'active'>('none');
 const showApplyModal = ref(false);
 const searchQuery = ref('');
 
+const stallBanners = ref<Record<string, any[]>>({})
+
 
 
 
@@ -275,13 +277,6 @@ watch(showApplyModal, (val) => {
   if (val) { setTimeout(() => initMap(), 200); }
 });
 
-const hotAreas = [
-
-  { title: '文化广场夜市', heat: '9.8', distance: '1.2km', img: 'https://images.unsplash.com/photo-1533900298318-6b8da08a523e?q=80&w=400&auto=format&fit=crop' },
-  { title: '滨江创意街区', heat: '9.5', distance: '2.5km', img: 'https://images.unsplash.com/photo-1555529771-835f59fc5efe?q=80&w=400&auto=format&fit=crop' },
-  { title: '老街美食巷', heat: '9.2', distance: '0.8km', img: 'https://images.unsplash.com/photo-1565123409695-7b5ef63a2efb?q=80&w=400&auto=format&fit=crop' },
-];
-
 const MOBILE_MODAL_BASE_WIDTH = 375;
 const MOBILE_MODAL_BASE_HEIGHT = 760;
 const MOBILE_MODAL_GUTTER_X = 16;
@@ -391,10 +386,22 @@ const loadApplicationStatus = async () => {
   } catch { /* ignore */ }
 };
 
+const fetchStallBanners = async () => {
+  try {
+    const token = localStorage.getItem('stall_auth_token') || ''
+    const resp = await fetch(buildApiUrl('/api/admin/banners/public/active?positions=STALL_HOT_AREA,STALL_WEEKLY,STALL_WEEKLY_CARD'), {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    const p = await resp.json()
+    if (p.success && p.data) stallBanners.value = p.data
+  } catch { }
+}
+
 onMounted(() => {
   updateViewport();
   window.addEventListener('resize', updateViewport);
   loadApplicationStatus();
+  fetchStallBanners();
 });
 
 onBeforeUnmount(() => {
@@ -627,18 +634,18 @@ const handleFileChange = async (event: Event) => {
 
       <div class="grid grid-cols-1 gap-4 px-1 md:grid-cols-2">
         <div
-          v-for="(area, i) in hotAreas.slice(0, 2)"
-          :key="i"
+          v-for="area in (stallBanners.STALL_HOT_AREA || []).slice(0, 2)"
+          :key="area.id"
           class="group flex h-32 cursor-pointer overflow-hidden rounded-[1.9rem] border border-stone-100 bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg sm:h-36 sm:rounded-[2.2rem]"
         >
           <div class="relative h-full w-2/5 overflow-hidden">
-            <img :src="area.img" :alt="area.title" class="h-full w-full object-cover transition-transform duration-1000 group-hover:scale-105" />
+            <img :src="area.imageUrl || area.image_url" :alt="area.title" class="h-full w-full object-cover transition-transform duration-1000 group-hover:scale-105" />
             <div class="absolute inset-0 bg-gradient-to-r from-black/5 to-transparent"></div>
           </div>
           <div class="flex min-w-0 flex-1 flex-col justify-center gap-2 p-4 text-center sm:p-5 sm:text-left">
             <div class="flex flex-wrap items-center justify-center gap-1.5 sm:justify-start">
-              <span class="rounded-full bg-orange-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-orange-500">Heat {{ area.heat }}</span>
-              <span class="text-[9px] font-black uppercase tracking-widest text-stone-300">{{ area.distance }}</span>
+              <span class="rounded-full bg-orange-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-orange-500">Heat {{ area.tag }}</span>
+              <span class="text-[9px] font-black uppercase tracking-widest text-stone-300">{{ area.subtitle }}</span>
             </div>
             <div class="space-y-1">
               <h5 class="truncate text-base font-black leading-tight text-stone-900">{{ area.title }}</h5>
@@ -671,25 +678,24 @@ const handleFileChange = async (event: Event) => {
       </div>
 
       <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div 
+        <div
           class="md:col-span-2 relative h-[440px] rounded-[3.5rem] overflow-hidden group cursor-pointer shadow-2xl shadow-stone-200"
         >
-          <img 
-            src="https://images.unsplash.com/photo-1555529771-835f59fc5efe?q=80&w=800&auto=format&fit=crop" 
+          <img
+            :src="(stallBanners.STALL_WEEKLY || [])[0]?.imageUrl || (stallBanners.STALL_WEEKLY || [])[0]?.image_url || 'https://images.unsplash.com/photo-1555529771-835f59fc5efe?q=80&w=800&auto=format&fit=crop'"
             class="absolute inset-0 w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110"
-            alt="Story Cover"
+            :alt="(stallBanners.STALL_WEEKLY || [])[0]?.title || 'Story Cover'"
           />
           <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent"></div>
           <div class="absolute top-8 left-8 flex items-center gap-3">
             <span class="px-5 py-2 bg-white/20 backdrop-blur-md rounded-full text-[10px] font-black text-white uppercase tracking-widest border border-white/20">
-              Hot Story
+              {{ (stallBanners.STALL_WEEKLY || [])[0]?.tag || 'Hot Story' }}
             </span>
-            <span class="text-[10px] font-black text-white/60">Vol. 042</span>
+            <span class="text-[10px] font-black text-white/60">{{ (stallBanners.STALL_WEEKLY || [])[0]?.subtitle || 'Vol. 042' }}</span>
           </div>
           <div class="absolute bottom-10 left-10 right-10 space-y-4 text-white">
             <h5 class="text-4xl font-black tracking-tighter leading-[0.95]">
-              如何选择最佳<br/>
-              <span class="text-orange-400 underline decoration-4 underline-offset-8">出摊黄金时段？</span>
+              {{ (stallBanners.STALL_WEEKLY || [])[0]?.title || '如何选择最佳出摊黄金时段？' }}
             </h5>
             <div class="flex items-center gap-6 pt-4 border-t border-white/20">
               <div class="flex items-center gap-2">
@@ -709,7 +715,7 @@ const handleFileChange = async (event: Event) => {
         </div>
 
         <div class="space-y-6">
-          <div 
+          <div
             class="bg-white p-8 rounded-[3rem] border border-stone-100 shadow-sm relative overflow-hidden group h-1/2 flex flex-col justify-center hover:-translate-y-2 transition-transform"
           >
             <div class="absolute top-0 right-0 p-6 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -718,13 +724,13 @@ const handleFileChange = async (event: Event) => {
             <div class="w-12 h-12 bg-orange-50 rounded-2xl flex items-center justify-center text-orange-500 mb-6 shadow-inner">
               <Sparkles class="w-6 h-6" />
             </div>
-            <h6 class="text-[10px] font-black text-orange-500 uppercase tracking-[0.2em] mb-2">Visual Marketing</h6>
+            <h6 class="text-[10px] font-black text-orange-500 uppercase tracking-[0.2em] mb-2">{{ (stallBanners.STALL_WEEKLY_CARD || [])[0]?.tag || 'Visual Marketing' }}</h6>
             <h5 class="text-xl font-black text-stone-900 leading-tight tracking-tight">
-              光影魔法：灯光布置<br/>提升门店转化率
+              {{ (stallBanners.STALL_WEEKLY_CARD || [])[0]?.title || '光影魔法：灯光布置<br/>提升门店转化率' }}
             </h5>
           </div>
 
-          <div 
+          <div
             class="relative flex h-auto min-h-[200px] flex-col justify-center overflow-hidden rounded-[2.25rem] bg-stone-900 p-6 text-white transition-transform hover:-translate-y-2 sm:h-1/2 sm:rounded-[3rem] sm:p-8"
           >
             <div class="absolute -bottom-4 -left-4 w-24 h-24 bg-white/5 rounded-full blur-2xl"></div>
@@ -732,9 +738,9 @@ const handleFileChange = async (event: Event) => {
             <div class="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center text-white mb-6">
               <Zap class="w-6 h-6" />
             </div>
-            <h6 class="text-[10px] font-black text-white/40 uppercase tracking-[0.2em] mb-2">Inventory Control</h6>
+            <h6 class="text-[10px] font-black text-white/40 uppercase tracking-[0.2em] mb-2">{{ (stallBanners.STALL_WEEKLY_CARD || [])[1]?.tag || 'Inventory Control' }}</h6>
             <h5 class="text-xl font-black text-white leading-tight tracking-tight">
-              夏季冷饮：<br/>库存损耗管理秘籍
+              {{ (stallBanners.STALL_WEEKLY_CARD || [])[1]?.title || '夏季冷饮：<br/>库存损耗管理秘籍' }}
             </h5>
           </div>
         </div>

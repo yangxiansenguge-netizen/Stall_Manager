@@ -84,6 +84,21 @@ const dashboardKpis = ref([
   { label: '转化率', value: '--', icon: TrendingUp, color: 'text-indigo-600', bg: 'bg-indigo-100/50', trend: '售出件数/订单数', trendUp: true },
 ]);
 
+const bannerSections = ref<Record<string, any[]>>({})
+
+const fetchBanners = async () => {
+  try {
+    const token = localStorage.getItem('stall_auth_token') || ''
+    const resp = await fetch(buildApiUrl('/api/admin/banners/public/active?positions=HOME_HERO,HOME_TREND,HOME_FEATURED'), {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    const p = await resp.json()
+    if (p.success && p.data) {
+      bannerSections.value = p.data
+    }
+  } catch { /* keep defaults */ }
+}
+
 const fetchDashboard = async () => {
   try {
     const token = localStorage.getItem('stall_auth_token') || '';
@@ -104,6 +119,7 @@ const fetchDashboard = async () => {
 onMounted(() => {
   fetchDashboard();
   fetchWeather();
+  fetchBanners();
   greetingTimer = setInterval(() => {
     currentTime.value = new Date();
   }, 30 * 1000);
@@ -235,11 +251,11 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <div class="mx-1 overflow-hidden rounded-[1.6rem] border border-stone-100 bg-white shadow-sm sm:mx-0 sm:rounded-[1.9rem]">
-        <div class="relative h-[142px] cursor-pointer group sm:h-[160px] md:h-[186px]">
+      <div v-if="(bannerSections.HOME_FEATURED || []).length > 0" v-for="b in bannerSections.HOME_FEATURED" :key="b.id" class="mx-1 overflow-hidden rounded-[1.6rem] border border-stone-100 bg-white shadow-sm sm:mx-0 sm:rounded-[1.9rem]">
+        <div @click="b.linkUrl && window.open(b.linkUrl)" class="relative h-[142px] cursor-pointer group sm:h-[160px] md:h-[186px]">
           <img
-            src="https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?q=80&w=1200&h=800&auto=format&fit=crop"
-            alt="Creative Handmade Stall"
+            :src="b.imageUrl || b.image_url"
+            :alt="b.title"
             class="h-full w-full object-cover transition-transform duration-1000 group-hover:scale-105"
             referrerPolicy="no-referrer"
           />
@@ -247,7 +263,7 @@ onUnmounted(() => {
           <div class="absolute inset-x-4 bottom-4 space-y-2 text-left sm:inset-x-6 sm:bottom-6">
             <p class="text-[10px] font-black uppercase tracking-[0.18em] text-amber-300">今日精选</p>
             <h3 class="max-w-[15rem] text-lg font-black leading-tight tracking-tight text-white sm:max-w-[18rem] sm:text-2xl">
-              文化广场 · 创意手工摊位
+              {{ b.title }}
             </h3>
             <button class="flex items-center gap-1.5 text-[11px] font-bold text-white/90 transition-colors group-hover:text-amber-300 sm:text-sm">
               查看详情 <ChevronRight class="h-4 w-4" />
@@ -312,13 +328,13 @@ onUnmounted(() => {
     </div>
 
     <!-- 5. 活动Banner -->
-    <section class="rounded-[2.5rem] overflow-hidden relative shadow-xl shadow-stone-200 group cursor-pointer">
-      <img src="https://picsum.photos/seed/market_night_carnival/1600/400" alt="Carnival Banner" class="w-full h-44 sm:h-48 md:h-52 object-cover group-hover:scale-105 transition-transform duration-1000" referrerPolicy="no-referrer" />
+    <section v-if="(bannerSections.HOME_HERO || []).length > 0" v-for="b in bannerSections.HOME_HERO" :key="b.id" @click="b.linkUrl && window.open(b.linkUrl)" class="rounded-[2.5rem] overflow-hidden relative shadow-xl shadow-stone-200 group cursor-pointer">
+      <img :src="b.imageUrl || b.image_url" :alt="b.title" class="w-full h-44 sm:h-48 md:h-52 object-cover group-hover:scale-105 transition-transform duration-1000" referrerPolicy="no-referrer" />
       <div class="absolute inset-0 bg-gradient-to-r from-indigo-900/80 via-indigo-900/20 to-transparent"></div>
       <div class="absolute inset-0 p-5 sm:p-8 flex flex-col justify-center">
         <div class="max-w-md space-y-2">
-          <h4 class="text-3xl md:text-4xl font-black text-white tracking-widest italic uppercase">夏日夜市狂欢季</h4>
-          <p class="text-white/80 font-bold">参与活动赢取更多曝光机会与专属补贴</p>
+          <h4 class="text-3xl md:text-4xl font-black text-white tracking-widest italic uppercase">{{ b.title }}</h4>
+          <p v-if="b.subtitle" class="text-white/80 font-bold">{{ b.subtitle }}</p>
           <button class="mt-4 px-8 py-2.5 bg-white text-indigo-900 font-black text-sm rounded-full shadow-lg active:scale-95 transition-all">立即参与</button>
         </div>
       </div>
@@ -331,16 +347,12 @@ onUnmounted(() => {
         <button class="text-xs font-bold text-amber-500 flex items-center gap-1 group">查看全部 <ArrowUpRight class="w-4 h-4 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" /></button>
       </div>
       <div class="flex overflow-x-auto gap-6 no-scrollbar pb-4 px-1">
-        <div v-for="(item, i) in [
-          { title: '张记柠檬茶 · 排队超过20分钟', sub: '位于您推荐摊位的东侧 50 米', tag: '热门摊位', seed: 'market' },
-          { title: '民谣之夜 · 19:30 准时开唱', sub: '预计吸引超过 500 名精准客群', tag: '活动快报', seed: 'concert' },
-          { title: '美食节招募 · 最后 10 个名额', sub: '报名截止至本周日，享 8 折优惠', tag: '最新招募', seed: 'foodfest' },
-        ]" :key="i" class="flex-none w-72 md:w-80 bg-white rounded-[2rem] p-5 shadow-sm border border-stone-100 space-y-4 hover:shadow-md transition-shadow">
+        <div v-for="item in (bannerSections.HOME_TREND || [])" :key="item.id" class="flex-none w-72 md:w-80 bg-white rounded-[2rem] p-5 shadow-sm border border-stone-100 space-y-4 hover:shadow-md transition-shadow">
           <div class="w-full h-36 rounded-2xl overflow-hidden relative">
-            <img 
-              alt="动态" 
-              class="w-full h-full object-cover" 
-              :src="`https://picsum.photos/seed/${item.seed}/400/200`" 
+            <img
+              alt="动态"
+              class="w-full h-full object-cover"
+              :src="item.imageUrl || item.image_url"
               referrerPolicy="no-referrer"
             />
             <div class="absolute top-3 left-3 px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-[9px] font-black text-white uppercase tracking-wider">
@@ -349,7 +361,7 @@ onUnmounted(() => {
           </div>
           <div class="space-y-1">
             <h5 class="font-bold text-base text-stone-900 leading-tight">{{ item.title }}</h5>
-            <p class="text-xs text-stone-400 font-medium">{{ item.sub }}</p>
+            <p class="text-xs text-stone-400 font-medium">{{ item.subtitle }}</p>
           </div>
         </div>
       </div>

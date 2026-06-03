@@ -40,6 +40,9 @@ const showLoginPassword = ref(false);
 const showRegisterPassword = ref(false);
 const showRegisterConfirmPassword = ref(false);
 
+const showAlertModal = ref(false);
+const alertBlockMsg = ref('');
+
 const loading = ref(false);
 
 const isValidPhone = (phone: string) => /^\d{11}$/.test(phone.trim());
@@ -83,7 +86,13 @@ const onLogin = async () => {
     showToast('success', '登录成功', '欢迎回来！');
     router.push(authStore.session?.userType === 'admin' ? '/admin' : '/dashboard');
   } catch (error) {
-    showToast('error', '登录失败', error instanceof Error ? error.message : '请核对账号信息后重试');
+    const msg = error instanceof Error ? error.message : '请核对账号信息后重试';
+    if (msg.includes('停用')) {
+      alertBlockMsg.value = msg;
+      showAlertModal.value = true;
+    } else {
+      showToast('error', '登录失败', msg);
+    }
   } finally {
     loginCredential.value = '';
     showLoginPassword.value = false;
@@ -442,5 +451,20 @@ const switchToLogin = () => {
       :type="activeAgreement === 'user' ? 'user' : 'privacy'"
       @close="activeAgreement = null"
     />
+
+    <!-- 账号停用提醒弹窗 -->
+    <div v-if="showAlertModal" class="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      <div class="absolute inset-0 bg-stone-900/40 backdrop-blur-sm"></div>
+      <div class="relative bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl text-center">
+        <div class="w-14 h-14 mx-auto rounded-full bg-red-100 flex items-center justify-center mb-4">
+          <span class="text-2xl">🚫</span>
+        </div>
+        <h3 class="text-lg font-black text-stone-900 mb-2">账号已被停用</h3>
+        <p class="text-sm text-stone-500 leading-relaxed mb-6">{{ alertBlockMsg }}</p>
+        <button @click="showAlertModal = false" class="w-full bg-stone-900 hover:bg-stone-800 text-white rounded-xl py-3 text-sm font-bold transition">
+          我知道了
+        </button>
+      </div>
+    </div>
   </div>
 </template>

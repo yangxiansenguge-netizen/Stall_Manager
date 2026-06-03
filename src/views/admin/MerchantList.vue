@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useAdminStore } from '../../stores/adminStore'
-import { Eye, Ban, CheckCircle } from 'lucide-vue-next'
+import { Ban, CheckCircle, Eye, Search, Store, UserRound, X } from 'lucide-vue-next'
 
 const store = useAdminStore()
 const keyword = ref('')
 const detailOpen = ref(false)
+
+const activeCount = computed(() => store.merchants.filter((m) => (m.status || m.onboardingStatus) === 'ACTIVE').length)
+const suspendedCount = computed(() => store.merchants.filter((m) => (m.status || m.onboardingStatus) === 'SUSPENDED').length)
 
 const doSearch = () => {
   store.fetchMerchants(1, keyword.value)
@@ -16,9 +19,23 @@ const openDetail = async (merchantId: string) => {
   detailOpen.value = true
 }
 
-const toggleStatus = (merchantId: string, currentStatus: string) => {
+const toggleStatus = async (merchantId: string, currentStatus: string) => {
   const newStatus = (currentStatus === 'ACTIVE' || currentStatus === 'PENDING') ? 'SUSPENDED' : 'ACTIVE'
-  store.updateMerchantStatus(merchantId, newStatus).then(() => store.fetchMerchants())
+  await store.updateMerchantStatus(merchantId, newStatus)
+  await store.fetchMerchants(1, keyword.value)
+}
+
+const statusClass = (status: string) => {
+  if (status === 'ACTIVE') return 'ds-pill-ok'
+  if (status === 'SUSPENDED') return 'ds-pill-danger'
+  return 'ds-pill-muted'
+}
+
+const statusLabel = (status: string) => {
+  if (status === 'ACTIVE') return '正常'
+  if (status === 'SUSPENDED') return '已停用'
+  if (status === 'PENDING') return '待完善'
+  return status || '未知'
 }
 
 onMounted(() => {
@@ -27,68 +44,126 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="space-y-6">
-    <div class="flex items-center justify-between">
-      <h1 class="text-xl font-black text-stone-900">商户管理</h1>
-      <div class="flex gap-2">
-        <input v-model="keyword" @keyup.enter="doSearch" placeholder="搜索商户名/手机号" class="px-3 py-2 rounded-xl border border-stone-200 text-xs w-48" />
-        <button @click="doSearch" class="px-4 py-2 bg-stone-100 hover:bg-stone-200 rounded-xl text-xs font-bold text-stone-600 transition">搜索</button>
-      </div>
-    </div>
+  <div class="ds-shell">
+    <section class="grid gap-3 sm:grid-cols-3">
+      <article class="ds-panel p-4">
+        <p class="text-sm font-bold text-stone-500">当前列表</p>
+        <p class="mt-2 text-3xl font-black text-stone-950">{{ store.merchants.length }}</p>
+        <p class="text-xs font-semibold text-stone-400">支持搜索商户名和手机号</p>
+      </article>
+      <article class="ds-panel p-4">
+        <p class="text-sm font-bold text-stone-500">正常经营</p>
+        <p class="mt-2 text-3xl font-black text-emerald-700">{{ activeCount }}</p>
+        <p class="text-xs font-semibold text-stone-400">可继续获得推荐曝光</p>
+      </article>
+      <article class="ds-panel p-4">
+        <p class="text-sm font-bold text-stone-500">已停用</p>
+        <p class="mt-2 text-3xl font-black text-red-600">{{ suspendedCount }}</p>
+        <p class="text-xs font-semibold text-stone-400">需人工复核后恢复</p>
+      </article>
+    </section>
 
-    <!-- Merchant Table -->
-    <div class="bg-white rounded-2xl border border-stone-100 overflow-hidden">
-      <table class="w-full text-left">
-        <thead>
-          <tr class="text-[10px] font-bold text-stone-400 uppercase tracking-wider border-b border-stone-100">
-            <th class="px-4 py-3">商户名</th><th class="px-4 py-3">手机号</th><th class="px-4 py-3">注册时间</th><th class="px-4 py-3">状态</th><th class="px-4 py-3">操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="m in store.merchants" :key="m.merchantId || m.id" class="border-b border-stone-50 hover:bg-stone-50/50 transition">
-            <td class="px-4 py-3 text-xs font-medium text-stone-700">{{ m.merchantName || m.merchant_name }}</td>
-            <td class="px-4 py-3 text-xs text-stone-500">{{ m.phone }}</td>
-            <td class="px-4 py-3 text-xs text-stone-400">{{ (m.createdAt || m.created_at || '').toString().slice(0, 10) }}</td>
-            <td class="px-4 py-3">
-              <span :class="(m.status || m.onboardingStatus) === 'ACTIVE' ? 'bg-emerald-50 text-emerald-600' : (m.status || m.onboardingStatus) === 'SUSPENDED' ? 'bg-red-50 text-red-600' : 'bg-stone-50 text-stone-500'" class="px-2 py-0.5 rounded-full text-[10px] font-bold">
-                {{ (m.status || m.onboardingStatus) === 'ACTIVE' ? '正常' : (m.status || m.onboardingStatus) === 'SUSPENDED' ? '已停用' : m.status || m.onboardingStatus }}
-              </span>
-            </td>
-            <td class="px-4 py-3">
-              <div class="flex items-center gap-2">
-                <button @click="openDetail(m.merchantId || m.merchant_id)" class="text-xs font-bold text-amber-600 hover:text-amber-700 flex items-center gap-1">
-                  <Eye class="w-3.5 h-3.5" /> 详情
-                </button>
-                <button @click="toggleStatus(m.merchantId || m.merchant_id, m.status || m.onboardingStatus)" class="text-xs font-bold flex items-center gap-1"
-                  :class="(m.status || m.onboardingStatus) !== 'SUSPENDED' ? 'text-red-500 hover:text-red-600' : 'text-emerald-500 hover:text-emerald-600'">
-                  <Ban v-if="(m.status || m.onboardingStatus) !== 'SUSPENDED'" class="w-3.5 h-3.5" />
-                  <CheckCircle v-else class="w-3.5 h-3.5" />
-                  {{ (m.status || m.onboardingStatus) !== 'SUSPENDED' ? '禁用' : '启用' }}
-                </button>
+    <section class="ds-panel p-4 sm:p-5">
+      <div class="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <h2 class="text-xl font-black text-stone-950">商户管理</h2>
+          <p class="mt-1 text-sm font-semibold text-stone-500">把商户看成经营中的人，而不是后台表格的一行。</p>
+        </div>
+        <div class="flex gap-2">
+          <div class="relative min-w-0 flex-1 sm:w-72">
+            <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
+            <input v-model="keyword" class="ds-input pl-10" placeholder="搜索商户名 / 手机号" @keyup.enter="doSearch" />
+          </div>
+          <button class="ds-button ds-button-primary" @click="doSearch">搜索</button>
+        </div>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>商户</th>
+              <th>手机号</th>
+              <th>注册时间</th>
+              <th>状态</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="m in store.merchants" :key="m.merchantId || m.id">
+              <td>
+                <div class="flex items-center gap-3">
+                  <div class="flex h-10 w-10 items-center justify-center rounded-[16px] bg-amber-100 text-amber-700">
+                    <UserRound class="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p class="font-black text-stone-900">{{ m.merchantName || m.merchant_name || '未命名商户' }}</p>
+                    <p class="text-xs font-semibold text-stone-400">ID {{ m.merchantId || m.merchant_id || m.id }}</p>
+                  </div>
+                </div>
+              </td>
+              <td class="font-semibold text-stone-600">{{ m.phone }}</td>
+              <td class="font-semibold text-stone-400">{{ (m.createdAt || m.created_at || '').toString().slice(0, 10) }}</td>
+              <td><span :class="['ds-pill', statusClass(m.status || m.onboardingStatus)]">{{ statusLabel(m.status || m.onboardingStatus) }}</span></td>
+              <td>
+                <div class="flex flex-wrap gap-2">
+                  <button class="ds-button ds-button-warm h-9 px-3" @click="openDetail(m.merchantId || m.merchant_id)">
+                    <Eye class="h-4 w-4" />
+                    详情
+                  </button>
+                  <button
+                    class="ds-button h-9 px-3"
+                    :class="(m.status || m.onboardingStatus) !== 'SUSPENDED' ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-700'"
+                    @click="toggleStatus(m.merchantId || m.merchant_id, m.status || m.onboardingStatus)"
+                  >
+                    <Ban v-if="(m.status || m.onboardingStatus) !== 'SUSPENDED'" class="h-4 w-4" />
+                    <CheckCircle v-else class="h-4 w-4" />
+                    {{ (m.status || m.onboardingStatus) !== 'SUSPENDED' ? '停用' : '启用' }}
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p v-if="store.merchants.length === 0" class="rounded-[24px] bg-[#FBF5EA] py-16 text-center text-sm font-bold text-stone-400">暂无商户数据</p>
+    </section>
+
+    <Teleport to="body">
+      <Transition name="fade-slide">
+        <div v-if="detailOpen && store.currentMerchant" class="fixed inset-0 z-50 flex justify-end">
+          <div class="drawer-backdrop absolute inset-0" @click="detailOpen = false" />
+          <aside class="drawer-panel relative h-full w-full max-w-[460px] overflow-y-auto p-6">
+            <div class="flex items-start justify-between gap-4">
+              <div>
+                <p class="ds-eyebrow">Merchant Profile</p>
+                <h2 class="mt-2 text-2xl font-black text-stone-950">商户详情</h2>
               </div>
-            </td>
-          </tr>
-          <tr v-if="store.merchants.length === 0">
-            <td colspan="6" class="px-4 py-12 text-center text-xs text-stone-400">暂无商户数据</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+              <button class="flex h-10 w-10 items-center justify-center rounded-full bg-stone-100 text-stone-500" @click="detailOpen = false">
+                <X class="h-5 w-5" />
+              </button>
+            </div>
 
-    <!-- Detail Modal -->
-    <div v-if="detailOpen && store.currentMerchant" class="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/20 backdrop-blur-sm">
-      <div class="bg-white rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl space-y-4">
-        <div class="flex items-center justify-between">
-          <h2 class="text-base font-black text-stone-900">商户详情</h2>
-          <button @click="detailOpen = false" class="text-stone-400 hover:text-stone-600 text-sm font-bold">关闭</button>
+            <div class="mt-6 ds-panel p-5">
+              <div class="mb-5 flex items-center gap-3">
+                <div class="flex h-14 w-14 items-center justify-center rounded-[22px] bg-amber-100 text-amber-700">
+                  <Store class="h-7 w-7" />
+                </div>
+                <div>
+                  <h3 class="text-lg font-black text-stone-950">{{ store.currentMerchant.merchantName || store.currentMerchant.merchant_name }}</h3>
+                  <p class="text-sm font-semibold text-stone-400">{{ store.currentMerchant.phone }}</p>
+                </div>
+              </div>
+              <div class="space-y-3 text-sm">
+                <div class="flex justify-between gap-4"><span class="text-stone-400">入驻状态</span><span class="font-black text-stone-900">{{ statusLabel(store.currentMerchant.onboardingStatus || store.currentMerchant.onboarding_status) }}</span></div>
+                <div class="flex justify-between gap-4"><span class="text-stone-400">账号状态</span><span class="font-black text-stone-900">{{ statusLabel(store.currentMerchant.status) }}</span></div>
+                <div class="flex justify-between gap-4"><span class="text-stone-400">注册时间</span><span class="font-bold text-stone-700">{{ (store.currentMerchant.createdAt || store.currentMerchant.created_at || '').toString().slice(0, 10) }}</span></div>
+              </div>
+            </div>
+          </aside>
         </div>
-        <div class="space-y-2 text-sm">
-          <div class="flex justify-between"><span class="text-stone-400">商户名</span><span class="font-medium">{{ store.currentMerchant.merchantName || store.currentMerchant.merchant_name }}</span></div>
-          <div class="flex justify-between"><span class="text-stone-400">手机号</span><span class="font-medium">{{ store.currentMerchant.phone }}</span></div>
-          <div class="flex justify-between"><span class="text-stone-400">入驻状态</span><span class="font-medium">{{ store.currentMerchant.onboardingStatus || store.currentMerchant.onboarding_status }}</span></div>
-          <div class="flex justify-between"><span class="text-stone-400">注册时间</span><span class="font-medium">{{ (store.currentMerchant.createdAt || store.currentMerchant.created_at || '').toString().slice(0, 10) }}</span></div>
-        </div>
-      </div>
-    </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>

@@ -36,7 +36,6 @@ interface StallDetail {
   status?: string;
   applicationStatus?: string;
   nextStep?: string;
-  progressPercent?: number;
 }
 
 // -- 状态 --
@@ -467,10 +466,6 @@ onMounted(() => { fetchOverview(); });
                 <div v-if="stallDetail.stallCode" class="flex items-center justify-between rounded-xl bg-stone-50 p-3">
                   <span class="text-xs font-bold text-stone-500">摊位编号</span>
                   <span class="text-sm font-bold text-stone-700">{{ stallDetail.stallCode }}</span>
-                </div>
-                <div v-if="stallDetail.progressPercent != null" class="flex items-center justify-between rounded-xl bg-stone-50 p-3">
-                  <span class="text-xs font-bold text-stone-500">完成进度</span>
-                  <span class="text-sm font-black text-amber-600">{{ stallDetail.progressPercent }}%</span>
                 </div>
                 <div v-if="stallDetail.nextStep" class="rounded-xl bg-amber-50 p-3">
                   <p class="text-xs font-bold text-amber-700">📋 {{ stallDetail.nextStep }}</p>
