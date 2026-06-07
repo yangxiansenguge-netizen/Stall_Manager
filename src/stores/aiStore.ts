@@ -99,6 +99,20 @@ export const useAIStore = defineStore('ai', () => {
   const fetchReport = async (force = false) => {
     loading.value = true
     try {
+      // 没有订单数据时不调用 AI
+      try {
+        const token = localStorage.getItem('stall_auth_token') || ''
+        const resp = await fetch(buildApiUrl('/api/ai/has-data'), {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        const p = await resp.json()
+        if (p.success && p.data === false) {
+          noData.value = true
+          loading.value = false
+          return
+        }
+      } catch { /* 接口不通则继续 */ }
+
       const [decision, analysis] = await Promise.all([
         aiApi.getDailyDecision(),
         aiApi.getAnalysis(force),

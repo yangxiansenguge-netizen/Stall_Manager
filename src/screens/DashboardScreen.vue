@@ -85,6 +85,7 @@ const dashboardKpis = ref([
 ]);
 
 const bannerSections = ref<Record<string, any[]>>({})
+const revenueRanking = ref<any[]>([])
 
 const fetchBanners = async () => {
   try {
@@ -97,6 +98,24 @@ const fetchBanners = async () => {
       bannerSections.value = p.data
     }
   } catch { /* keep defaults */ }
+}
+
+const fetchRanking = async () => {
+  try {
+    const token = localStorage.getItem('stall_auth_token') || ''
+    const resp = await fetch(buildApiUrl('/api/dashboard/ranking'), {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    const p = await resp.json()
+    if (p.success && p.data) {
+      revenueRanking.value = p.data.map((s: any, i: number) => ({
+        name: s.name,
+        amount: '¥' + ((Number(s.revenue || 0) / 100).toFixed(0)),
+        rank: i + 1,
+        seed: 'stall' + i
+      }))
+    }
+  } catch { }
 }
 
 const fetchDashboard = async () => {
@@ -120,6 +139,7 @@ onMounted(() => {
   fetchDashboard();
   fetchWeather();
   fetchBanners();
+  fetchRanking();
   greetingTimer = setInterval(() => {
     currentTime.value = new Date();
   }, 30 * 1000);
@@ -374,12 +394,7 @@ onUnmounted(() => {
         <span class="rounded-full bg-stone-100 px-2 py-0.5 text-[9px] font-bold uppercase text-stone-400">实时更新</span>
       </div>
       <div class="rounded-[1.7rem] border border-stone-50 bg-white p-1.5 shadow-sm sm:rounded-[2rem] sm:p-2">
-        <div v-for="(stall, i) in [
-          { name: '老王特色烧烤', amount: '¥8,420', rank: 1, seed: 'bbq' },
-          { name: '阿强冰镇奶茶', amount: '¥6,150', rank: 2, seed: 'tea' },
-          { name: '苏式爆汁生煎', amount: '¥5,890', rank: 3, seed: 'food' },
-          { name: '创意手工饰品', amount: '¥4,200', rank: 4, seed: 'art' },
-        ]" :key="i" class="group flex items-center gap-3 rounded-[1.35rem] p-3 transition-colors hover:bg-stone-50 sm:gap-4 sm:p-3.5">
+        <div v-for="(stall, i) in revenueRanking" :key="i" class="group flex items-center gap-3 rounded-[1.35rem] p-3 transition-colors hover:bg-stone-50 sm:gap-4 sm:p-3.5">
           <div :class="[
             'flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-black italic shadow-sm sm:h-8 sm:w-8 sm:text-sm',
             stall.rank === 1 ? 'bg-amber-400 text-stone-900 ring-2 ring-amber-100' :

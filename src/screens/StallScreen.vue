@@ -338,7 +338,10 @@ const loadApplicationStatus = async () => {
     const p = await resp.json();
     if (p.success && p.data && p.data.latestApplication) {
       const app = p.data.latestApplication;
-      userStatus.value = p.data.currentStatus === 'APPROVED' ? 'active' : 'pending';
+      const cs = p.data.currentStatus;
+      if (cs === 'APPROVED') userStatus.value = 'active';
+      else if (cs === 'NONE' || cs === 'REJECTED') userStatus.value = 'none';
+      else userStatus.value = 'pending';
 
       // 回显所有申请字段
       if (app.applicantName) stallNameInput.value = app.applicantName;
@@ -466,8 +469,8 @@ const submitApply = async () => {
       stallApplicationAddress.value = payload.data.displayAddress;
     }
 
-    userStatus.value = 'active';
-    showToast('success', '申请成功', `申请编号：${payload.data?.applicationId || ''}`);
+    userStatus.value = 'pending';
+    showToast('success', '申请已提交', '请等待平台审核');
     showApplyModal.value = false;
   } catch (error) {
     showToast('error', '提交失败', error instanceof Error ? error.message : '提交申请失败');
@@ -577,7 +580,13 @@ const handleFileChange = async (event: Event) => {
           </div>
 
           <div class="flex flex-col items-center gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <button @click.stop="handleApply" class="group inline-flex w-full items-center justify-center gap-3 rounded-2xl bg-stone-900 px-6 py-3.5 text-sm font-black text-white shadow-xl shadow-stone-900/10 transition-all active:scale-95 sm:w-auto">
+            <button v-if="userStatus === 'active'" disabled class="group inline-flex w-full items-center justify-center gap-3 rounded-2xl bg-emerald-100 px-6 py-3.5 text-sm font-black text-emerald-700 sm:w-auto cursor-not-allowed">
+              ✓ 已入驻
+            </button>
+            <button v-else-if="userStatus === 'pending'" disabled class="group inline-flex w-full items-center justify-center gap-3 rounded-2xl bg-amber-100 px-6 py-3.5 text-sm font-black text-amber-700 sm:w-auto cursor-not-allowed">
+              审核中...
+            </button>
+            <button v-else @click.stop="handleApply" class="group inline-flex w-full items-center justify-center gap-3 rounded-2xl bg-stone-900 px-6 py-3.5 text-sm font-black text-white shadow-xl shadow-stone-900/10 transition-all active:scale-95 sm:w-auto">
               立即申请入驻
               <ArrowUpRight class="h-4 w-4 transition-transform group-hover:translate-x-1 group-hover:-translate-y-1" />
             </button>

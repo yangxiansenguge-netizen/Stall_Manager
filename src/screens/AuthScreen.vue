@@ -41,11 +41,38 @@ const showRegisterPassword = ref(false);
 const showRegisterConfirmPassword = ref(false);
 
 const showAlertModal = ref(false);
+const alertBlockTitle = ref('');
 const alertBlockMsg = ref('');
+
+const loginPhoneError = ref('');
+const loginCredentialError = ref('');
+const registerPhoneError = ref('');
+const registerPasswordError = ref('');
 
 const loading = ref(false);
 
 const isValidPhone = (phone: string) => /^\d{11}$/.test(phone.trim());
+
+const validateLoginPhone = () => {
+  const phone = loginPhone.value.trim()
+  if (phone && !isValidPhone(phone)) loginPhoneError.value = '请输入正确的手机号'
+  else loginPhoneError.value = ''
+}
+const validateLoginCredential = () => {
+  if (loginMode.value === 'password' && loginCredential.value && loginCredential.value.length < 6)
+    loginCredentialError.value = '密码至少6位'
+  else loginCredentialError.value = ''
+}
+const validateRegisterPhone = () => {
+  const phone = registerPhone.value.trim()
+  if (phone && !isValidPhone(phone)) registerPhoneError.value = '请输入正确的手机号'
+  else registerPhoneError.value = ''
+}
+const validateRegisterPassword = () => {
+  const pw = registerPassword.value
+  if (pw && (pw.length < 6 || pw.length > 16)) registerPasswordError.value = '密码需为6-16位'
+  else registerPasswordError.value = ''
+}
 
 const fillLoginSmsCode = () => {
   if (loading.value) return;
@@ -67,7 +94,7 @@ const onLogin = async () => {
   const credential = loginCredential.value.trim();
 
   if (!isValidPhone(phone)) {
-    showToast('error', '登录失败', '请输入11位手机号');
+    showToast('error', '格式错误', '请输入11位手机号');
     return;
   }
   if (!credential) {
@@ -88,6 +115,7 @@ const onLogin = async () => {
   } catch (error) {
     const msg = error instanceof Error ? error.message : '请核对账号信息后重试';
     if (msg.includes('停用')) {
+      alertBlockTitle.value = '账号已被停用';
       alertBlockMsg.value = msg;
       showAlertModal.value = true;
     } else {
@@ -111,12 +139,11 @@ const onRegister = async () => {
   const confirmPassword = registerConfirmPassword.value.trim();
 
   if (!isValidPhone(phone)) {
-    showToast('error', '注册失败', '请输入11位手机号');
+    showToast('error', '格式错误', '请输入11位手机号');
     return;
   }
-
-  if (!password || password.length < 6 || password.length > 16) {
-    showToast('error', '注册失败', '密码长度需为6-16位');
+  if (password.length < 6 || password.length > 16) {
+    showToast('error', '格式错误', '密码需为6-16位');
     return;
   }
   if (password !== confirmPassword) {
@@ -134,7 +161,14 @@ const onRegister = async () => {
     showToast('success', '注册成功', '已自动登录，欢迎加入！');
     router.push('/dashboard');
   } catch (error) {
-    showToast('error', '注册失败', error instanceof Error ? error.message : '请检查信息后重试');
+    const msg = error instanceof Error ? error.message : '请检查信息后重试';
+    if (msg.includes('已注册')) {
+      alertBlockTitle.value = '注册提示';
+      alertBlockMsg.value = '该手机号已注册，请直接登录或使用其他手机号。';
+      showAlertModal.value = true;
+    } else {
+      showToast('error', '注册失败', msg);
+    }
   } finally {
     registerPassword.value = '';
     registerConfirmPassword.value = '';
@@ -240,8 +274,11 @@ const switchToLogin = () => {
                   type="tel"
                   placeholder="请输入手机号"
                   class="h-10 w-full bg-transparent pl-10 pr-3.5 text-[13px] font-medium text-stone-900 outline-none placeholder:text-stone-300 sm:h-12 sm:pl-11 sm:pr-4 sm:text-sm"
+                  @blur="validateLoginPhone"
+                  @input="loginPhoneError = ''"
                 />
               </div>
+              <p v-if="loginPhoneError" class="text-[11px] font-semibold text-red-500 mt-1">{{ loginPhoneError }}</p>
             </div>
 
             <div class="space-y-1.5 text-left sm:space-y-2">
@@ -255,6 +292,8 @@ const switchToLogin = () => {
                   :type="loginMode === 'code' ? 'text' : (showLoginPassword ? 'text' : 'password')"
                   :placeholder="loginMode === 'code' ? '请输入验证码' : '请输入登录密码'"
                   class="h-10 w-full bg-transparent pl-10 pr-20 text-[13px] font-medium text-stone-900 outline-none placeholder:text-stone-300 sm:h-12 sm:pl-11 sm:pr-28 sm:text-sm"
+                  @blur="validateLoginCredential"
+                  @input="loginCredentialError = ''"
                 />
                 <button
                   v-if="loginMode === 'code'"
@@ -276,6 +315,7 @@ const switchToLogin = () => {
                 </button>
               </div>
             </div>
+            <p v-if="loginCredentialError" class="text-[11px] font-semibold text-red-500 mt-1">{{ loginCredentialError }}</p>
 
             <div class="flex items-start gap-2 text-left sm:gap-2.5">
               <input
@@ -343,8 +383,11 @@ const switchToLogin = () => {
                   placeholder="请输入手机号"
                   autocomplete="off"
                   class="h-10 w-full bg-transparent pl-10 pr-3.5 text-[13px] font-medium text-stone-900 outline-none placeholder:text-stone-300 sm:h-12 sm:pl-11 sm:pr-4 sm:text-sm"
+                  @blur="validateRegisterPhone"
+                  @input="registerPhoneError = ''"
                 />
               </div>
+              <p v-if="registerPhoneError" class="text-[11px] font-semibold text-red-500 mt-1">{{ registerPhoneError }}</p>
             </div>
 
             <div class="space-y-1 text-left sm:space-y-1.5">
@@ -376,6 +419,8 @@ const switchToLogin = () => {
                   placeholder="请设置6-16位密码"
                   autocomplete="new-password"
                   class="h-10 w-full bg-transparent px-3.5 pr-10 text-[13px] font-medium text-stone-900 outline-none placeholder:text-stone-300 sm:h-12 sm:px-4 sm:pr-11 sm:text-sm"
+                  @blur="validateRegisterPassword"
+                  @input="registerPasswordError = ''"
                 />
                 <button
                   type="button"
@@ -388,6 +433,7 @@ const switchToLogin = () => {
                 </button>
               </div>
             </div>
+            <p v-if="registerPasswordError" class="text-[11px] font-semibold text-red-500 mt-1">{{ registerPasswordError }}</p>
 
             <div class="space-y-1 text-left sm:space-y-1.5">
               <label class="pl-1 text-[10px] font-bold tracking-wide text-stone-400 sm:text-[11px]">确认密码</label>
@@ -459,7 +505,7 @@ const switchToLogin = () => {
         <div class="w-14 h-14 mx-auto rounded-full bg-red-100 flex items-center justify-center mb-4">
           <span class="text-2xl">🚫</span>
         </div>
-        <h3 class="text-lg font-black text-stone-900 mb-2">账号已被停用</h3>
+        <h3 class="text-lg font-black text-stone-900 mb-2">{{ alertBlockTitle }}</h3>
         <p class="text-sm text-stone-500 leading-relaxed mb-6">{{ alertBlockMsg }}</p>
         <button @click="showAlertModal = false" class="w-full bg-stone-900 hover:bg-stone-800 text-white rounded-xl py-3 text-sm font-bold transition">
           我知道了

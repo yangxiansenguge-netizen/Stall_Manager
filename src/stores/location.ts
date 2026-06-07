@@ -68,15 +68,17 @@ export const useLocationStore = defineStore('location', () => {
       }
       lastGeoKey.value = geoKey
 
-      // 第一层：localStorage 缓存（坐标差 < 100m）
+      // 第一层：localStorage 缓存（坐标差 < 100m 且未超过30分钟）
       const persisted = loadFromPersist()
-      if (persisted && persisted.latitude && persisted.longitude) {
-        if (haversine(lat, lng, persisted.latitude, persisted.longitude) < 100) {
-          displayAddress.value = persisted.displayAddress
-          locateFailed.value = false
-          showToast('success', '定位成功（缓存）', `📍 ${persisted.displayAddress}`)
-          locatingMe.value = false
-          return
+      if (persisted && persisted.latitude && persisted.longitude && persisted.time) {
+        if (Date.now() - persisted.time < 30 * 60 * 1000) {
+          if (haversine(lat, lng, persisted.latitude, persisted.longitude) < 100) {
+            displayAddress.value = persisted.displayAddress
+            locateFailed.value = false
+            showToast('success', '定位成功（缓存）', `📍 ${persisted.displayAddress}`)
+            locatingMe.value = false
+            return
+          }
         }
       }
 
@@ -123,10 +125,59 @@ export const useLocationStore = defineStore('location', () => {
     }, { enableHighAccuracy: true, timeout: 10000 })
   }
 
+  const relocateMe = async () => {
+    locatingMe.value = true
+    locateFailed.value = false
+    try {
+      // 跳过缓存，强制重新定位
+      const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 })
+      })
+      const lat = pos.coords.latitude
+      const lng = pos.coords.longitude
+
+      const token = localStorage.getItem('stall_auth_token') || ''
+      const resp = await fetch(buildApiUrl('/api/location/resolve'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ latitude: lat, longitude: lng }),
+      })
+      const p = await resp.json()
+      if (p.success && p.data) {
+        const d = p.data
+        if (!d.displayAddress || d.displayAddress === '定位失败') {
+          locateFailed.value = true
+          showToast('error', '定位失败', '百度地图 API 额度已用完，请更换 AK')
+          return
+        }
+        locateFailed.value = false
+        const addr = d.displayAddress || d.businessArea || d.district || d.address || `${lat.toFixed(4)}, ${lng.toFixed(4)}`
+        displayAddress.value = addr
+        saveToPersist({
+          displayAddress: addr,
+          fullAddress: d.address || '',
+          latitude: lat,
+          longitude: lng,
+          time: Date.now(),
+        })
+        showToast('success', '重新定位成功', `📍 ${addr}`)
+      } else {
+        locateFailed.value = true
+        showToast('error', '定位失败', '服务端返回异常')
+      }
+    } catch {
+      locateFailed.value = true
+      showToast('error', '定位失败', '网络异常')
+    } finally {
+      locatingMe.value = false
+    }
+  }
+
   return {
     displayAddress,
     locatingMe,
     locateFailed,
     locateMe,
+    relocateMe,
   }
 })

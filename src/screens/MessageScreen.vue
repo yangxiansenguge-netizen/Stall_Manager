@@ -20,8 +20,17 @@ const categoryDefaults: Record<string, { icon: string, bg: string, color: string
 
 const messageCategories = ref<any[]>([])
 const selectedMsg = ref<any>(null)
-const openDetail = (msg: any) => {
+const openDetail = async (msg: any) => {
   selectedMsg.value = msg
+  if (!msg.read && msg.id) {
+    try {
+      const token = localStorage.getItem('stall_auth_token') || ''
+      await fetch(buildApiUrl(`/api/messages/${msg.id}/read`), {
+        method: 'PUT', headers: { Authorization: `Bearer ${token}` },
+      })
+      msg.read = true
+    } catch { }
+  }
 }
 const closeDetail = () => {
   selectedMsg.value = null

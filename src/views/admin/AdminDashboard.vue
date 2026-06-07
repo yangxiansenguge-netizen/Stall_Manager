@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useAdminStore } from '../../stores/adminStore'
 import { AlertTriangle, ArrowUpRight, ClipboardCheck, ShoppingCart, Store, TrendingUp, Users } from 'lucide-vue-next'
 
+const router = useRouter()
 const store = useAdminStore()
 
 const yuan = (value: number | string | undefined | null) => {
@@ -39,9 +41,10 @@ onMounted(() => {
           <h2 class="ds-title mt-2">今天先看风险，再看增长</h2>
           <p class="ds-subtitle max-w-2xl">管理端不需要堆满数据。先把待处理、低活跃和趋势波动浮出来，让运营人员一眼知道下一步。</p>
         </div>
-        <button class="ds-button ds-button-primary">
+        <button class="ds-button ds-button-primary relative" @click="router.push('/admin/review')">
           <ClipboardCheck class="h-4 w-4" />
           查看待办
+          <span v-if="(store.overview?.pendingReviews || 0) > 0" class="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-black text-white">{{ store.overview?.pendingReviews || 0 }}</span>
         </button>
       </div>
     </section>

@@ -26,7 +26,7 @@ export function showToast(
 
   setTimeout(() => {
     removeToast(id)
-  }, 3000)
+  }, type === 'error' ? 5000 : 3000)
 }
 
 export function removeToast(id: number) {

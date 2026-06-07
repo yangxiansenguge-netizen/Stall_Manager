@@ -202,8 +202,19 @@ const addProductTypes = computed(() => {
 });
 
 const openAddModal = async () => {
-  const ok = await checkStall();
-  if (!ok) { showStallDialog.value = true; return; }
+  // 检查是否有摊位
+  try {
+    const token = localStorage.getItem('stall_auth_token') || ''
+    const resp = await fetch(buildApiUrl('/api/stalls/onboarding/status'), {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    const p = await resp.json()
+    if (!p.success || !p.data || p.data.currentStatus === 'NONE') {
+      showStallDialog.value = true
+      return
+    }
+  } catch { /* 接口不通也放行 */ }
+
   addName.value = ''; addType.value = addProductTypes.value[0]; addPrice.value = null;
   addStock.value = null; addDesc.value = ''; addImagePreview.value = ''; addImageUrl.value = '';
   showAddModal.value = true;
@@ -670,7 +681,7 @@ const productColors = ['bg-orange-50', 'bg-red-50', 'bg-amber-50', 'bg-emerald-5
             <p class="text-sm text-stone-500 mb-5">您还没有申请摊位，无法上架商品。是否前往申请摊位页面？</p>
             <div class="flex gap-3">
               <button @click="showStallDialog = false" class="flex-1 rounded-xl border border-stone-200 py-2.5 text-sm font-bold text-stone-500 hover:bg-stone-50">取消</button>
-              <button @click="showStallDialog = false; emit('navigate-stall')" class="flex-1 rounded-xl bg-amber-500 py-2.5 text-sm font-black text-white hover:bg-amber-600 transition-colors">前往申请摊位</button>
+              <button @click="showStallDialog = false; router.push('/stall')" class="flex-1 rounded-xl bg-amber-500 py-2.5 text-sm font-black text-white hover:bg-amber-600 transition-colors">前往申请摊位</button>
             </div>
           </div>
         </div>
