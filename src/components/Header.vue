@@ -1,12 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import {
-  Store,
-  Search,
-  Bell,
-  ChevronDown
-} from 'lucide-vue-next';
+import { Store, Search, Bell, ChevronDown } from 'lucide-vue-next';
 import { buildApiUrl } from '../utils/api'
+import { useMessageStore } from '../stores/messageStore'
 
 defineProps<{
   onOpenMessages?: () => void;
@@ -18,31 +14,11 @@ interface NotifItem {
   id: number; title: string; content: string; time: string; category: string;
 }
 
+const { unreadCount, fetchUnreadCount } = useMessageStore()
 const showNotifications = ref(false);
-const unreadCount = ref(0)
 const notifications = ref<NotifItem[]>([])
 
-const fetchNotifications = async () => {
-  try {
-    const token = localStorage.getItem('stall_auth_token') || ''
-    const resp = await fetch(buildApiUrl('/api/messages/center'), {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    const p = await resp.json()
-    if (p.success && p.data?.categories) {
-      const all: NotifItem[] = []
-      for (const cat of p.data.categories) {
-        for (const m of (cat.messages || [])) {
-          all.push({ id: m.id, title: m.title, content: m.content || '', time: m.time, category: cat.type })
-        }
-      }
-      notifications.value = all.slice(0, 5)
-      unreadCount.value = all.filter((m: any) => !m.read).length
-    }
-  } catch { }
-}
-
-onMounted(() => { fetchNotifications() })
+onMounted(() => { fetchUnreadCount() })
 </script>
 
 <template>

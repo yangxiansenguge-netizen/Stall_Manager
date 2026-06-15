@@ -26,7 +26,7 @@ async function request<T>(path: string, body?: unknown, token?: string): Promise
 export const authApi = {
   profile(token: string) {
     return request<{
-      token?: string; merchantId: string; merchantName: string; phone: string
+      token: string; merchantId: string; merchantName: string; phone: string
       onboardingStatus: string; expiresAt: string; roles: string[]
       userType: 'admin' | 'merchant'; role: string
     }>('/api/auth/profile', undefined, token)
@@ -35,12 +35,14 @@ export const authApi = {
     return request<{
       token: string; merchantId: string; merchantName: string; phone: string
       onboardingStatus: string; expiresAt: string; roles: string[]
+      userType: 'admin' | 'merchant'; role: string
     }>('/api/auth/login', { phone, loginMode: mode, credential })
   },
   register(phone: string, smsCode: string, password: string, confirmPassword: string) {
     return request<{
       token: string; merchantId: string; merchantName: string; phone: string
       onboardingStatus: string; expiresAt: string; roles: string[]
+      userType: 'admin' | 'merchant'; role: string
     }>('/api/auth/register', { phone, smsCode, password, confirmPassword })
   },
 }

@@ -36,11 +36,16 @@ export const useAuthStore = defineStore('auth', () => {
   const checkAuth = async () => {
     const t = localStorage.getItem(AUTH_TOKEN)
     if (!t) { isAuthLoading.value = false; return }
+    // 防止并发刷新触发多次鉴权
+    if (isAuthLoading.value && session.value) { return }
     try {
       const s = await authApi.profile(t)
       persistSession(s)
-    } catch {
-      logout()
+    } catch (e: any) {
+      // 只有 401 鉴权失败才清退，网络错误静默保留本地 session
+      if (e?.message?.includes('401') || e?.message?.includes('鉴权') || e?.message?.includes('失效')) {
+        logout()
+      }
     } finally {
       isAuthLoading.value = false
     }

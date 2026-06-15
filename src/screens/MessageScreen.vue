@@ -9,6 +9,9 @@ import {
   X
 } from 'lucide-vue-next';
 import { buildApiUrl } from '../utils/api'
+import { useMessageStore } from '../stores/messageStore'
+
+const { markOneRead } = useMessageStore()
 
 const iconComponents: Record<string, any> = { ShieldCheck, CheckCircle2, PartyPopper }
 
@@ -29,6 +32,7 @@ const openDetail = async (msg: any) => {
         method: 'PUT', headers: { Authorization: `Bearer ${token}` },
       })
       msg.read = true
+      markOneRead()
     } catch { }
   }
 }

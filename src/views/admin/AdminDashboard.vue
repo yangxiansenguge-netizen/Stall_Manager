@@ -2,13 +2,13 @@
 import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAdminStore } from '../../stores/adminStore'
-import { AlertTriangle, ArrowUpRight, ClipboardCheck, ShoppingCart, Store, TrendingUp, Users } from 'lucide-vue-next'
+import { AlertTriangle, ArrowUpRight, ClipboardCheck, Store, TrendingUp, UserPlus, Users } from 'lucide-vue-next'
 
 const router = useRouter()
 const store = useAdminStore()
 
-const yuan = (value: number | string | undefined | null) => {
-  const n = Number(value || 0)
+const yuan = (v: any) => {
+  const n = Number(v || 0)
   return `¥${n.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}`
 }
 
@@ -17,8 +17,8 @@ const kpis = computed(() => {
   return [
     { label: '总商户', value: d.totalMerchants ?? '--', helper: '平台商户池', icon: Users, tone: 'ok' },
     { label: '总摊位', value: d.totalStalls ?? '--', helper: '可经营点位', icon: Store, tone: 'info' },
-    { label: '今日营收', value: yuan(d.todayRevenue), helper: '商户实时流水', icon: TrendingUp, tone: 'warn' },
-    { label: '今日订单', value: d.todayOrders ?? '--', helper: '全平台订单', icon: ShoppingCart, tone: 'danger' },
+    { label: '本月新增', value: d.newMerchantsThisMonth ?? '--', helper: '本月注册商户', icon: UserPlus, tone: 'warn' },
+    { label: '待审核', value: d.pendingReviewCount ?? '--', helper: '摊位申请待处理', icon: ClipboardCheck, tone: 'danger' },
   ]
 })
 
@@ -44,7 +44,7 @@ onMounted(() => {
         <button class="ds-button ds-button-primary relative" @click="router.push('/admin/review')">
           <ClipboardCheck class="h-4 w-4" />
           查看待办
-          <span v-if="(store.overview?.pendingReviews || 0) > 0" class="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-black text-white">{{ store.overview?.pendingReviews || 0 }}</span>
+          <span v-if="(store.overview?.pendingReviewCount || 0) > 0" class="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-black text-white">{{ store.overview?.pendingReviewCount || 0 }}</span>
         </button>
       </div>
     </section>

@@ -75,7 +75,7 @@ export const useLocationStore = defineStore('location', () => {
           if (haversine(lat, lng, persisted.latitude, persisted.longitude) < 100) {
             displayAddress.value = persisted.displayAddress
             locateFailed.value = false
-            showToast('success', '定位成功（缓存）', `📍 ${persisted.displayAddress}`)
+            showToast('success', '定位成功', `📍 ${persisted.displayAddress}`)
             locatingMe.value = false
             return
           }

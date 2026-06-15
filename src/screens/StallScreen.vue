@@ -279,8 +279,8 @@ watch(showApplyModal, (val) => {
 
 const MOBILE_MODAL_BASE_WIDTH = 375;
 const MOBILE_MODAL_BASE_HEIGHT = 760;
-const MOBILE_MODAL_GUTTER_X = 16;
-const MOBILE_MODAL_GUTTER_Y = 20;
+const MOBILE_MODAL_GUTTER_X = 40;
+const MOBILE_MODAL_GUTTER_Y = 60;
 
 const viewportWidth = ref(390);
 const viewportHeight = ref(844);
@@ -400,17 +400,24 @@ const fetchStallBanners = async () => {
   } catch { }
 }
 
+let statusPollTimer: ReturnType<typeof setInterval> | null = null
+
 onMounted(() => {
   updateViewport();
   window.addEventListener('resize', updateViewport);
   loadApplicationStatus();
   fetchStallBanners();
+  // 审核中时每 30 秒轮询状态变化
+  statusPollTimer = setInterval(() => {
+    if (userStatus.value === 'pending') loadApplicationStatus()
+  }, 30000)
 });
 
 onBeforeUnmount(() => {
   if (typeof window !== 'undefined') {
     window.removeEventListener('resize', updateViewport);
   }
+  if (statusPollTimer) clearInterval(statusPollTimer);
 });
 
 const handleApply = () => {
@@ -549,56 +556,56 @@ const handleFileChange = async (event: Event) => {
         @click="handleApply"
         class="group relative overflow-hidden rounded-[2.2rem] border border-stone-50 bg-white shadow-[0_10px_20px_rgba(0,0,0,0.05)] transition-transform hover:-translate-y-1 lg:grid lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]"
       >
-        <div class="z-10 grid gap-4 p-5 sm:p-6 md:p-8">
-          <div class="flex flex-wrap items-center justify-center gap-2 text-center sm:justify-start sm:text-left">
+        <div class="z-10 grid gap-3 md:gap-4 p-4 sm:p-6 md:p-8">
+          <div class="flex flex-wrap items-center justify-center gap-1.5 md:gap-2 text-center sm:justify-start sm:text-left">
             <div class="h-1.5 w-1.5 rounded-full bg-orange-500"></div>
-            <span class="text-[10px] font-black uppercase tracking-[0.2em] text-stone-400">Current Opportunities</span>
-            <span class="rounded-full bg-orange-50 px-2.5 py-1 text-[10px] font-black text-orange-500">空余 23 处</span>
+            <span class="text-[9px] md:text-[10px] font-black uppercase tracking-[0.2em] text-stone-400">Current Opportunities</span>
+            <span class="rounded-full bg-orange-50 px-2 py-0.5 md:px-2.5 md:py-1 text-[9px] md:text-[10px] font-black text-orange-500">空余 23 处</span>
           </div>
 
-          <div class="grid items-center gap-4 lg:grid-cols-[minmax(0,1fr)_11rem] lg:items-start">
-            <div class="space-y-3 text-center sm:text-left">
-              <h2 class="text-[2rem] font-black leading-[0.92] tracking-tighter text-stone-900 sm:text-[2.35rem] md:text-5xl">
+          <div class="grid items-center gap-3 md:gap-4 lg:grid-cols-[minmax(0,1fr)_11rem] lg:items-start">
+            <div class="space-y-2 md:space-y-3 text-center sm:text-left">
+              <h2 class="text-[1.5rem] sm:text-[2rem] md:text-5xl font-black leading-[1.05] sm:leading-[0.92] tracking-tighter text-stone-900">
                 开启你的
-                <span class="block text-orange-500">烟火气生意</span>
+                <span class="text-orange-500 sm:block">烟火气生意</span>
               </h2>
-              <p class="mx-auto max-w-md text-sm font-medium leading-relaxed text-stone-500 sm:mx-0">
+              <p class="mx-auto max-w-md text-xs md:text-sm font-medium leading-relaxed text-stone-500 sm:mx-0 line-clamp-2 md:line-clamp-none">
                 在热门商圈里更快找到可申请摊位、查看推荐区域，并直接进入入驻申请。
               </p>
             </div>
 
-            <div class="grid grid-cols-2 gap-2.5 lg:grid-cols-1">
-              <div class="rounded-[1.4rem] border border-orange-100 bg-orange-50/80 p-3 text-center sm:text-left">
-                <p class="text-[10px] font-black uppercase tracking-widest text-orange-500">黄金时段</p>
-                <p class="mt-1 text-sm font-black text-stone-900">17:00 - 22:00</p>
+            <div class="grid grid-cols-2 gap-2 md:gap-2.5 lg:grid-cols-1">
+              <div class="rounded-[1.2rem] md:rounded-[1.4rem] border border-orange-100 bg-orange-50/80 p-2.5 md:p-3 text-center sm:text-left">
+                <p class="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-orange-500">黄金时段</p>
+                <p class="mt-0.5 md:mt-1 text-xs md:text-sm font-black text-stone-900">17:00 - 22:00</p>
               </div>
-              <div class="rounded-[1.4rem] border border-stone-100 bg-stone-50 p-3 text-center sm:text-left">
-                <p class="text-[10px] font-black uppercase tracking-widest text-stone-400">{{ stallApplicationAddress ? '摊位地址' : '热门商圈' }}</p>
-                <p class="mt-1 text-sm font-black text-stone-900 truncate max-w-[140px]">{{ stallApplicationAddress || '文化广场' }}</p>
+              <div class="rounded-[1.2rem] md:rounded-[1.4rem] border border-stone-100 bg-stone-50 p-2.5 md:p-3 text-center sm:text-left">
+                <p class="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-stone-400">{{ stallApplicationAddress ? '摊位地址' : '热门商圈' }}</p>
+                <p class="mt-0.5 md:mt-1 text-xs md:text-sm font-black text-stone-900 truncate max-w-[140px]">{{ stallApplicationAddress || '文化广场' }}</p>
               </div>
             </div>
           </div>
 
-          <div class="flex flex-col items-center gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <button v-if="userStatus === 'active'" disabled class="group inline-flex w-full items-center justify-center gap-3 rounded-2xl bg-emerald-100 px-6 py-3.5 text-sm font-black text-emerald-700 sm:w-auto cursor-not-allowed">
+          <div class="flex flex-col items-center gap-2 md:gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <button v-if="userStatus === 'active'" disabled class="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-100 px-5 py-3 text-xs md:text-sm font-black text-emerald-700 sm:w-auto cursor-not-allowed">
               ✓ 已入驻
             </button>
-            <button v-else-if="userStatus === 'pending'" disabled class="group inline-flex w-full items-center justify-center gap-3 rounded-2xl bg-amber-100 px-6 py-3.5 text-sm font-black text-amber-700 sm:w-auto cursor-not-allowed">
+            <button v-else-if="userStatus === 'pending'" disabled class="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-amber-100 px-5 py-3 text-xs md:text-sm font-black text-amber-700 sm:w-auto cursor-not-allowed">
               审核中...
             </button>
-            <button v-else @click.stop="handleApply" class="group inline-flex w-full items-center justify-center gap-3 rounded-2xl bg-stone-900 px-6 py-3.5 text-sm font-black text-white shadow-xl shadow-stone-900/10 transition-all active:scale-95 sm:w-auto">
+            <button v-else @click.stop="handleApply" class="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-stone-900 px-5 py-3 text-xs md:text-sm font-black text-white shadow-xl shadow-stone-900/10 transition-all active:scale-95 sm:w-auto">
               立即申请入驻
-              <ArrowUpRight class="h-4 w-4 transition-transform group-hover:translate-x-1 group-hover:-translate-y-1" />
+              <ArrowUpRight class="h-3.5 w-3.5 md:h-4 md:w-4 transition-transform group-hover:translate-x-1 group-hover:-translate-y-1" />
             </button>
 
-            <div class="grid w-full max-w-xs grid-cols-2 gap-2 sm:w-auto sm:min-w-[12rem]">
-              <div class="rounded-2xl border border-stone-100 bg-white px-3 py-2 text-center shadow-sm sm:text-left">
-                <p class="text-[10px] font-bold uppercase tracking-widest text-stone-400">通过率</p>
-                <p class="mt-1 text-sm font-black text-stone-900">92%</p>
+            <div class="grid w-full grid-cols-2 gap-2 sm:w-auto sm:min-w-[10rem] md:min-w-[12rem]">
+              <div class="rounded-2xl border border-stone-100 bg-white px-2.5 py-1.5 md:px-3 md:py-2 text-center shadow-sm sm:text-left">
+                <p class="text-[9px] md:text-[10px] font-bold uppercase tracking-widest text-stone-400">通过率</p>
+                <p class="mt-0.5 md:mt-1 text-xs md:text-sm font-black text-stone-900">92%</p>
               </div>
-              <div class="rounded-2xl border border-stone-100 bg-white px-3 py-2 text-center shadow-sm sm:text-left">
-                <p class="text-[10px] font-bold uppercase tracking-widest text-stone-400">步行距离</p>
-                <p class="mt-1 text-sm font-black text-stone-900">1.2km</p>
+              <div class="rounded-2xl border border-stone-100 bg-white px-2.5 py-1.5 md:px-3 md:py-2 text-center shadow-sm sm:text-left">
+                <p class="text-[9px] md:text-[10px] font-bold uppercase tracking-widest text-stone-400">步行距离</p>
+                <p class="mt-0.5 md:mt-1 text-xs md:text-sm font-black text-stone-900">1.2km</p>
               </div>
             </div>
           </div>
@@ -686,9 +693,9 @@ const handleFileChange = async (event: Event) => {
         </div>
       </div>
 
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
         <div
-          class="md:col-span-2 relative h-[440px] rounded-[3.5rem] overflow-hidden group cursor-pointer shadow-2xl shadow-stone-200"
+          class="md:col-span-2 relative h-[240px] sm:h-[320px] md:h-[440px] rounded-[2.5rem] md:rounded-[3.5rem] overflow-hidden group cursor-pointer shadow-2xl shadow-stone-200"
         >
           <img
             :src="(stallBanners.STALL_WEEKLY || [])[0]?.imageUrl || (stallBanners.STALL_WEEKLY || [])[0]?.image_url || 'https://images.unsplash.com/photo-1555529771-835f59fc5efe?q=80&w=800&auto=format&fit=crop'"
@@ -696,14 +703,14 @@ const handleFileChange = async (event: Event) => {
             :alt="(stallBanners.STALL_WEEKLY || [])[0]?.title || 'Story Cover'"
           />
           <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent"></div>
-          <div class="absolute top-8 left-8 flex items-center gap-3">
-            <span class="px-5 py-2 bg-white/20 backdrop-blur-md rounded-full text-[10px] font-black text-white uppercase tracking-widest border border-white/20">
+          <div class="absolute top-4 left-4 md:top-8 md:left-8 flex items-center gap-2 md:gap-3">
+            <span class="px-3 py-1.5 md:px-5 md:py-2 bg-white/20 backdrop-blur-md rounded-full text-[9px] md:text-[10px] font-black text-white uppercase tracking-widest border border-white/20">
               {{ (stallBanners.STALL_WEEKLY || [])[0]?.tag || 'Hot Story' }}
             </span>
-            <span class="text-[10px] font-black text-white/60">{{ (stallBanners.STALL_WEEKLY || [])[0]?.subtitle || 'Vol. 042' }}</span>
+            <span class="text-[9px] md:text-[10px] font-black text-white/60">{{ (stallBanners.STALL_WEEKLY || [])[0]?.subtitle || 'Vol. 042' }}</span>
           </div>
-          <div class="absolute bottom-10 left-10 right-10 space-y-4 text-white">
-            <h5 class="text-4xl font-black tracking-tighter leading-[0.95]">
+          <div class="absolute bottom-5 left-5 right-5 md:bottom-10 md:left-10 md:right-10 space-y-2 md:space-y-4 text-white">
+            <h5 class="text-xl md:text-4xl font-black tracking-tighter leading-[1.1] md:leading-[0.95]">
               {{ (stallBanners.STALL_WEEKLY || [])[0]?.title || '如何选择最佳出摊黄金时段？' }}
             </h5>
             <div class="flex items-center gap-6 pt-4 border-t border-white/20">
@@ -723,33 +730,33 @@ const handleFileChange = async (event: Event) => {
           </div>
         </div>
 
-        <div class="space-y-6">
+        <div class="grid grid-cols-2 gap-3 md:block md:space-y-6">
           <div
-            class="bg-white p-8 rounded-[3rem] border border-stone-100 shadow-sm relative overflow-hidden group h-1/2 flex flex-col justify-center hover:-translate-y-2 transition-transform"
+            class="bg-white p-4 md:p-8 rounded-[2rem] md:rounded-[3rem] border border-stone-100 shadow-sm relative overflow-hidden group flex flex-col justify-center hover:-translate-y-2 transition-transform min-h-[140px] md:h-1/2"
           >
-            <div class="absolute top-0 right-0 p-6 opacity-0 group-hover:opacity-100 transition-opacity">
-              <ArrowUpRight class="w-6 h-6 text-stone-900" />
+            <div class="absolute top-0 right-0 p-3 md:p-6 opacity-0 group-hover:opacity-100 transition-opacity">
+              <ArrowUpRight class="w-5 h-5 md:w-6 md:h-6 text-stone-900" />
             </div>
-            <div class="w-12 h-12 bg-orange-50 rounded-2xl flex items-center justify-center text-orange-500 mb-6 shadow-inner">
-              <Sparkles class="w-6 h-6" />
+            <div class="w-10 h-10 md:w-12 md:h-12 bg-orange-50 rounded-2xl flex items-center justify-center text-orange-500 mb-4 md:mb-6 shadow-inner">
+              <Sparkles class="w-5 h-5 md:w-6 md:h-6" />
             </div>
-            <h6 class="text-[10px] font-black text-orange-500 uppercase tracking-[0.2em] mb-2">{{ (stallBanners.STALL_WEEKLY_CARD || [])[0]?.tag || 'Visual Marketing' }}</h6>
-            <h5 class="text-xl font-black text-stone-900 leading-tight tracking-tight">
-              {{ (stallBanners.STALL_WEEKLY_CARD || [])[0]?.title || '光影魔法：灯光布置<br/>提升门店转化率' }}
+            <h6 class="text-[9px] md:text-[10px] font-black text-orange-500 uppercase tracking-[0.2em] mb-1 md:mb-2 truncate">{{ (stallBanners.STALL_WEEKLY_CARD || [])[0]?.tag || 'Visual Marketing' }}</h6>
+            <h5 class="text-sm md:text-xl font-black text-stone-900 leading-tight tracking-tight line-clamp-2 md:line-clamp-none">
+              {{ (stallBanners.STALL_WEEKLY_CARD || [])[0]?.title || '光影魔法：灯光布置提升门店转化率' }}
             </h5>
           </div>
 
           <div
-            class="relative flex h-auto min-h-[200px] flex-col justify-center overflow-hidden rounded-[2.25rem] bg-stone-900 p-6 text-white transition-transform hover:-translate-y-2 sm:h-1/2 sm:rounded-[3rem] sm:p-8"
+            class="relative flex flex-col justify-center overflow-hidden rounded-[2rem] md:rounded-[3rem] bg-stone-900 p-4 md:p-8 text-white transition-transform hover:-translate-y-2 min-h-[140px] md:min-h-[200px]"
           >
             <div class="absolute -bottom-4 -left-4 w-24 h-24 bg-white/5 rounded-full blur-2xl"></div>
-            <div class="absolute top-8 right-8 writing-vertical-lr grayscale opacity-20 font-black text-4xl select-none">TIPS</div>
-            <div class="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center text-white mb-6">
-              <Zap class="w-6 h-6" />
+            <div class="absolute top-4 right-4 md:top-8 md:right-8 writing-vertical-lr grayscale opacity-20 font-black text-2xl md:text-4xl select-none">TIPS</div>
+            <div class="w-10 h-10 md:w-12 md:h-12 bg-white/10 rounded-2xl flex items-center justify-center text-white mb-4 md:mb-6">
+              <Zap class="w-5 h-5 md:w-6 md:h-6" />
             </div>
-            <h6 class="text-[10px] font-black text-white/40 uppercase tracking-[0.2em] mb-2">{{ (stallBanners.STALL_WEEKLY_CARD || [])[1]?.tag || 'Inventory Control' }}</h6>
-            <h5 class="text-xl font-black text-white leading-tight tracking-tight">
-              {{ (stallBanners.STALL_WEEKLY_CARD || [])[1]?.title || '夏季冷饮：<br/>库存损耗管理秘籍' }}
+            <h6 class="text-[9px] md:text-[10px] font-black text-white/40 uppercase tracking-[0.2em] mb-1 md:mb-2 truncate">{{ (stallBanners.STALL_WEEKLY_CARD || [])[1]?.tag || 'Inventory Control' }}</h6>
+            <h5 class="text-sm md:text-xl font-black text-white leading-tight tracking-tight line-clamp-2 md:line-clamp-none">
+              {{ (stallBanners.STALL_WEEKLY_CARD || [])[1]?.title || '夏季冷饮：库存损耗管理秘籍' }}
             </h5>
           </div>
         </div>

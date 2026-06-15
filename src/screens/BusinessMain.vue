@@ -273,7 +273,7 @@ const fetchTrackInventory = async () => {
 };
 
 const openEdit = (p: ProductItem) => {
-  editProduct.value = p; editName.value = p.name; editPrice.value = p.price;
+  editProduct.value = p; editName.value = p.name; editPrice.value = p.price / 100;
   editStock.value = trackInventory.value ? (p.stock || 0) : null;
   editType.value = p.type; editDesc.value = p.description || '';
   if (p.discountPercent) { editDiscountMode.value = 'discount'; editDiscount.value = p.discountPercent; editBuyM.value = null; editGetN.value = null; }
@@ -343,7 +343,8 @@ const goToAI = async () => {
   router.push('/ai')
 };
 
-const discountedPrice = (p: ProductItem) => p.discountPercent ? (p.price * p.discountPercent / 100).toFixed(2) : p.price;
+const fmtYuan = (cents: number) => (cents / 100).toFixed(2)
+const discountedPrice = (p: ProductItem) => p.discountPercent ? fmtYuan(p.price * p.discountPercent / 100) : fmtYuan(p.price);
 
 const route = useRoute();
 const router = useRouter();
@@ -362,44 +363,44 @@ const productColors = ['bg-orange-50', 'bg-red-50', 'bg-amber-50', 'bg-emerald-5
 <template>
   <div class="min-h-screen bg-[#fdfaf8] text-slate-900 font-sans space-y-5 sm:space-y-6 pb-8">
     <!-- ===== 区块 1：顶部概览 + AI 助手 ===== -->
-    <section class="bg-gradient-to-br from-orange-50/50 to-amber-100/30 rounded-[32px] sm:rounded-[48px] p-5 sm:p-8 shadow-sm relative overflow-hidden flex flex-col lg:flex-row items-center gap-6 sm:gap-10">
+    <section class="bg-gradient-to-br from-orange-50/50 to-amber-100/30 rounded-[24px] sm:rounded-[48px] p-4 sm:p-8 shadow-sm relative overflow-hidden flex flex-col lg:flex-row items-center gap-4 sm:gap-10">
       <div class="absolute top-0 left-0 w-full h-full pointer-events-none overflow-hidden">
-        <div class="absolute -top-20 -left-20 w-80 h-80 bg-orange-200/20 blur-[100px] rounded-full" />
-        <div class="absolute top-40 right-20 w-64 h-64 bg-blue-100/30 blur-[80px] rounded-full" />
+        <div class="absolute -top-20 -left-20 w-60 md:w-80 h-60 md:h-80 bg-orange-200/20 blur-[100px] rounded-full" />
+        <div class="absolute top-40 right-20 w-48 md:w-64 h-48 md:h-64 bg-blue-100/30 blur-[80px] rounded-full" />
       </div>
 
       <div class="flex-1 z-10 w-full">
-        <h2 class="text-xl sm:text-2xl font-bold text-slate-800 flex items-center gap-2">今天生意 还不错哦！</h2>
-        <p class="text-slate-500 text-xs sm:text-sm mt-1">经营数据实时更新中</p>
-        <div class="mt-6 sm:mt-10">
-          <div class="flex items-baseline gap-2 sm:gap-3">
-            <span class="text-orange-500 text-xl sm:text-2xl font-black">¥</span>
-            <span class="text-3xl sm:text-5xl font-black text-slate-800 tracking-tighter">{{ todayRevenue.replace('¥', '') }}</span>
+        <h2 class="text-lg sm:text-2xl font-bold text-slate-800 flex items-center gap-2">今天生意 还不错哦！</h2>
+        <p class="text-slate-500 text-[11px] sm:text-sm mt-1">经营数据实时更新中</p>
+        <div class="mt-4 sm:mt-10">
+          <div class="flex items-baseline gap-1.5 sm:gap-3">
+            <span class="text-orange-500 text-lg sm:text-2xl font-black">¥</span>
+            <span class="text-2xl sm:text-5xl font-black text-slate-800 tracking-tighter">{{ todayRevenue.replace('¥', '') }}</span>
             <div class="w-2 h-2 bg-green-500 rounded-full animate-bounce" />
           </div>
-          <p class="text-slate-400 text-xs sm:text-sm font-bold tracking-widest uppercase mt-2">预计今日收入</p>
+          <p class="text-slate-400 text-[10px] sm:text-sm font-bold tracking-widest uppercase mt-1.5 sm:mt-2">预计今日收入</p>
         </div>
-        <div class="flex flex-wrap gap-3 sm:gap-4 mt-5 sm:mt-6">
-          <div class="px-4 sm:px-6 py-3 sm:py-4 rounded-[20px] sm:rounded-[28px] bg-white/40 backdrop-blur-md border border-white/60 shadow-sm flex flex-col gap-1 transition-all hover:bg-white/60 hover:shadow-md">
-            <div class="flex items-center gap-2">
-              <ShoppingBag class="w-4 h-4 text-orange-500" />
-              <span class="text-base sm:text-lg font-black text-slate-800">{{ todaySold }}</span>
+        <div class="flex flex-wrap gap-2 sm:gap-4 mt-4 sm:mt-6">
+          <div class="px-3 sm:px-6 py-2.5 sm:py-4 rounded-[16px] sm:rounded-[28px] bg-white/40 backdrop-blur-md border border-white/60 shadow-sm flex flex-col gap-0.5 sm:gap-1 transition-all hover:bg-white/60 hover:shadow-md">
+            <div class="flex items-center gap-1.5 sm:gap-2">
+              <ShoppingBag class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-orange-500" />
+              <span class="text-sm sm:text-lg font-black text-slate-800">{{ todaySold }}</span>
             </div>
-            <span class="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-widest">售出商品</span>
+            <span class="text-[8px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-widest">售出商品</span>
           </div>
-          <div class="px-4 sm:px-6 py-3 sm:py-4 rounded-[20px] sm:rounded-[28px] bg-white/40 backdrop-blur-md border border-white/60 shadow-sm flex flex-col gap-1 transition-all hover:bg-white/60 hover:shadow-md">
-            <div class="flex items-center gap-2">
-              <Store class="w-4 h-4 text-blue-500" />
-              <span class="text-base sm:text-lg font-black text-slate-800">{{ todayOrders }}</span>
+          <div class="px-3 sm:px-6 py-2.5 sm:py-4 rounded-[16px] sm:rounded-[28px] bg-white/40 backdrop-blur-md border border-white/60 shadow-sm flex flex-col gap-0.5 sm:gap-1 transition-all hover:bg-white/60 hover:shadow-md">
+            <div class="flex items-center gap-1.5 sm:gap-2">
+              <Store class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-500" />
+              <span class="text-sm sm:text-lg font-black text-slate-800">{{ todayOrders }}</span>
             </div>
-            <span class="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-widest">订单数</span>
+            <span class="text-[8px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-widest">订单数</span>
           </div>
-          <div class="px-4 sm:px-6 py-3 sm:py-4 rounded-[20px] sm:rounded-[28px] bg-white/40 backdrop-blur-md border border-white/60 shadow-sm flex flex-col gap-1 transition-all hover:bg-white/60 hover:shadow-md">
-            <div class="flex items-center gap-2">
-              <TrendingUp class="w-4 h-4 text-purple-500" />
-              <span class="text-base sm:text-lg font-black text-slate-800">{{ conversion }}</span>
+          <div class="px-3 sm:px-6 py-2.5 sm:py-4 rounded-[16px] sm:rounded-[28px] bg-white/40 backdrop-blur-md border border-white/60 shadow-sm flex flex-col gap-0.5 sm:gap-1 transition-all hover:bg-white/60 hover:shadow-md">
+            <div class="flex items-center gap-1.5 sm:gap-2">
+              <TrendingUp class="w-3.5 h-3.5 sm:w-4 sm:h-4 text-purple-500" />
+              <span class="text-sm sm:text-lg font-black text-slate-800">{{ conversion }}</span>
             </div>
-            <span class="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-widest">转化率</span>
+            <span class="text-[8px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-widest">转化率</span>
           </div>
         </div>
       </div>
@@ -434,55 +435,55 @@ const productColors = ['bg-orange-50', 'bg-red-50', 'bg-amber-50', 'bg-emerald-5
     </section>
 
     <!-- ===== 区块 2：收入趋势图 + 经营建议 ===== -->
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-5 sm:gap-6">
-      <div class="lg:col-span-2 bg-white/60 backdrop-blur-xl rounded-[32px] sm:rounded-[48px] p-5 sm:p-8 shadow-sm border border-blue-100/50">
-        <h2 class="text-base sm:text-lg font-semibold mb-5 sm:mb-8">今日收入趋势</h2>
-        <div class="h-[200px] sm:h-[260px] w-full">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+      <div class="lg:col-span-2 bg-white/60 backdrop-blur-xl rounded-[24px] sm:rounded-[48px] p-4 sm:p-8 shadow-sm border border-blue-100/50">
+        <h2 class="text-base sm:text-lg font-semibold mb-4 sm:mb-8">今日收入趋势</h2>
+        <div class="h-[180px] sm:h-[260px] w-full">
           <VueApexCharts v-if="revenueTrend.length" :key="chartKey" :options="chartOptions as any" :series="chartSeries" type="area" height="100%" />
-          <div v-else class="flex items-center justify-center h-full text-slate-300 text-sm">暂无趋势数据</div>
+          <div v-else class="flex items-center justify-center h-full text-slate-300 text-xs sm:text-sm">暂无趋势数据</div>
         </div>
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mt-5 sm:mt-8">
-          <div class="p-3 sm:p-4 rounded-2xl flex items-center gap-3 sm:gap-4 border border-transparent hover:border-slate-100 transition-all bg-blue-50/50">
-            <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-white flex items-center justify-center shadow-sm"><Store class="w-4 h-4 sm:w-5 sm:h-5 text-blue-500" /></div>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 mt-4 sm:mt-8">
+          <div class="p-2 sm:p-4 rounded-2xl flex items-center gap-2 sm:gap-4 border border-transparent hover:border-slate-100 transition-all bg-blue-50/50">
+            <div class="w-7 h-7 sm:w-10 sm:h-10 rounded-xl bg-white flex items-center justify-center shadow-sm"><Store class="w-3.5 h-3.5 sm:w-5 sm:h-5 text-blue-500" /></div>
             <div>
-              <p class="text-[9px] sm:text-[10px] text-slate-400 font-medium uppercase tracking-wider">昨日营收</p>
+              <p class="text-[8px] sm:text-[10px] text-slate-400 font-medium uppercase tracking-wider">昨日营收</p>
               <div class="flex items-center gap-1">
-                <p class="text-xs sm:text-sm font-bold text-slate-700">{{ yesterdayRevenueVal }}</p>
-                <span :class="['flex items-center text-[10px] font-bold', revenueTrendUp ? 'text-emerald-500' : 'text-rose-500']">
-                  <ArrowUpRight v-if="revenueTrendUp" class="w-3 h-3" /><ArrowDown v-else class="w-3 h-3" />{{ revenueTrendPct }}
+                <p class="text-[11px] sm:text-sm font-bold text-slate-700">{{ yesterdayRevenueVal }}</p>
+                <span :class="['flex items-center text-[9px] sm:text-[10px] font-bold', revenueTrendUp ? 'text-emerald-500' : 'text-rose-500']">
+                  <ArrowUpRight v-if="revenueTrendUp" class="w-2.5 h-2.5 sm:w-3 sm:h-3" /><ArrowDown v-else class="w-2.5 h-2.5 sm:w-3 sm:h-3" />{{ revenueTrendPct }}
                 </span>
               </div>
             </div>
           </div>
-          <div class="p-3 sm:p-4 rounded-2xl flex items-center gap-3 sm:gap-4 border border-transparent hover:border-slate-100 transition-all bg-orange-50/50">
-            <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-white flex items-center justify-center shadow-sm"><Bell class="w-4 h-4 sm:w-5 sm:h-5 text-orange-500" /></div>
+          <div class="p-2 sm:p-4 rounded-2xl flex items-center gap-2 sm:gap-4 border border-transparent hover:border-slate-100 transition-all bg-orange-50/50">
+            <div class="w-7 h-7 sm:w-10 sm:h-10 rounded-xl bg-white flex items-center justify-center shadow-sm"><Bell class="w-3.5 h-3.5 sm:w-5 sm:h-5 text-orange-500" /></div>
             <div>
-              <p class="text-[9px] sm:text-[10px] text-slate-400 font-medium uppercase tracking-wider">售出商品</p>
+              <p class="text-[8px] sm:text-[10px] text-slate-400 font-medium uppercase tracking-wider">售出商品</p>
               <div class="flex items-center gap-1">
-                <p class="text-xs sm:text-sm font-bold text-slate-700">{{ yesterdaySoldVal }}</p>
-                <span :class="['flex items-center text-[10px] font-bold', soldTrendUp ? 'text-emerald-500' : 'text-rose-500']">
-                  <ArrowUpRight v-if="soldTrendUp" class="w-3 h-3" /><ArrowDown v-else class="w-3 h-3" />{{ soldTrendPct }}
+                <p class="text-[11px] sm:text-sm font-bold text-slate-700">{{ yesterdaySoldVal }}</p>
+                <span :class="['flex items-center text-[9px] sm:text-[10px] font-bold', soldTrendUp ? 'text-emerald-500' : 'text-rose-500']">
+                  <ArrowUpRight v-if="soldTrendUp" class="w-2.5 h-2.5 sm:w-3 sm:h-3" /><ArrowDown v-else class="w-2.5 h-2.5 sm:w-3 sm:h-3" />{{ soldTrendPct }}
                 </span>
               </div>
             </div>
           </div>
-          <div class="p-3 sm:p-4 rounded-2xl flex items-center gap-3 sm:gap-4 border border-transparent hover:border-slate-100 transition-all bg-green-50/50">
-            <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-white flex items-center justify-center shadow-sm"><TrendingUp class="w-4 h-4 sm:w-5 sm:h-5 text-green-500" /></div>
+          <div class="p-2 sm:p-4 rounded-2xl flex items-center gap-2 sm:gap-4 border border-transparent hover:border-slate-100 transition-all bg-green-50/50">
+            <div class="w-7 h-7 sm:w-10 sm:h-10 rounded-xl bg-white flex items-center justify-center shadow-sm"><TrendingUp class="w-3.5 h-3.5 sm:w-5 sm:h-5 text-green-500" /></div>
             <div>
-              <p class="text-[9px] sm:text-[10px] text-slate-400 font-medium uppercase tracking-wider">订单数</p>
+              <p class="text-[8px] sm:text-[10px] text-slate-400 font-medium uppercase tracking-wider">订单数</p>
               <div class="flex items-center gap-1">
-                <p class="text-xs sm:text-sm font-bold text-slate-700">{{ yesterdayOrdersVal }}</p>
-                <span :class="['flex items-center text-[10px] font-bold', ordersTrendUp ? 'text-emerald-500' : 'text-rose-500']">
-                  <ArrowUpRight v-if="ordersTrendUp" class="w-3 h-3" /><ArrowDown v-else class="w-3 h-3" />{{ ordersTrendPct }}
+                <p class="text-[11px] sm:text-sm font-bold text-slate-700">{{ yesterdayOrdersVal }}</p>
+                <span :class="['flex items-center text-[9px] sm:text-[10px] font-bold', ordersTrendUp ? 'text-emerald-500' : 'text-rose-500']">
+                  <ArrowUpRight v-if="ordersTrendUp" class="w-2.5 h-2.5 sm:w-3 sm:h-3" /><ArrowDown v-else class="w-2.5 h-2.5 sm:w-3 sm:h-3" />{{ ordersTrendPct }}
                 </span>
               </div>
             </div>
           </div>
-          <div class="p-3 sm:p-4 rounded-2xl flex items-center gap-3 sm:gap-4 border border-transparent hover:border-slate-100 transition-all bg-orange-50/50">
-            <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-white flex items-center justify-center shadow-sm"><Timer class="w-4 h-4 sm:w-5 sm:h-5 text-orange-500" /></div>
+          <div class="p-2 sm:p-4 rounded-2xl flex items-center gap-2 sm:gap-4 border border-transparent hover:border-slate-100 transition-all bg-orange-50/50">
+            <div class="w-7 h-7 sm:w-10 sm:h-10 rounded-xl bg-white flex items-center justify-center shadow-sm"><Timer class="w-3.5 h-3.5 sm:w-5 sm:h-5 text-orange-500" /></div>
             <div>
-              <p class="text-[9px] sm:text-[10px] text-slate-400 font-medium uppercase tracking-wider">预计高峰</p>
-              <p class="text-xs sm:text-sm font-bold text-slate-700">18:00</p>
+              <p class="text-[8px] sm:text-[10px] text-slate-400 font-medium uppercase tracking-wider">预计高峰</p>
+              <p class="text-[11px] sm:text-sm font-bold text-slate-700">18:00</p>
             </div>
           </div>
         </div>
@@ -638,7 +639,7 @@ const productColors = ['bg-orange-50', 'bg-red-50', 'bg-amber-50', 'bg-emerald-5
           <div class="flex items-center justify-between mt-2 sm:mt-3">
             <div>
               <div class="flex items-baseline gap-1">
-                <p v-if="p.discountPercent" class="text-xs text-slate-400 line-through">¥{{ Number(p.price).toFixed(2) }}</p>
+                <p v-if="p.discountPercent" class="text-xs text-slate-400 line-through">¥{{ fmtYuan(p.price) }}</p>
                 <p class="text-sm sm:text-base font-black text-slate-900 tracking-tight">¥{{ discountedPrice(p) }}</p>
               </div>
               <p v-if="trackInventory && p.stock > 0" class="text-[9px] sm:text-[10px] font-bold text-slate-400 mt-0.5">剩余 {{ p.stock }} 件</p>
@@ -746,7 +747,7 @@ const productColors = ['bg-orange-50', 'bg-red-50', 'bg-amber-50', 'bg-emerald-5
                     <label class="text-xs font-black uppercase tracking-widest text-gray-400 flex items-center gap-2">单价</label>
                     <div class="relative">
                       <span class="absolute left-4 top-1/2 -translate-y-1/2 text-orange-500 font-black text-lg">¥</span>
-                      <input v-model.number="addPrice" type="number" min="1" class="w-full h-12 pl-10 pr-4 bg-white border border-gray-100 rounded-2xl focus:border-orange-300 focus:ring-4 focus:ring-orange-50 outline-none font-bold text-orange-600 shadow-sm placeholder:text-gray-200" placeholder="0.00" />
+                      <input v-model.number="addPrice" type="text" inputmode="decimal" class="w-full h-12 pl-10 pr-4 bg-white border border-gray-100 rounded-2xl focus:border-orange-300 focus:ring-4 focus:ring-orange-50 outline-none font-bold text-orange-600 shadow-sm placeholder:text-gray-200" placeholder="0.00" />
                     </div>
                   </div>
                   <div v-if="trackInventory" class="space-y-2">
@@ -776,8 +777,8 @@ const productColors = ['bg-orange-50', 'bg-red-50', 'bg-amber-50', 'bg-emerald-5
               </footer>
             </div>
 
-            <!-- 右：预览卡片 -->
-            <div class="w-full lg:w-[380px] bg-gradient-to-b from-orange-50/40 to-white p-6 sm:p-8 lg:p-10 flex flex-col relative shrink-0 border-t lg:border-t-0 lg:border-l border-gray-50">
+            <!-- 右：预览卡片（仅桌面端展示） -->
+            <div class="hidden lg:flex w-[380px] bg-gradient-to-b from-orange-50/40 to-white p-10 flex-col relative shrink-0 border-l border-gray-50">
               <div class="mb-6 space-y-1">
                 <div class="flex items-center gap-2.5">
                   <div class="w-7 h-7 bg-orange-100 text-orange-500 rounded-lg flex items-center justify-center"><Eye :size="16" /></div>
@@ -865,7 +866,7 @@ const productColors = ['bg-orange-50', 'bg-red-50', 'bg-amber-50', 'bg-emerald-5
                   <label class="flex items-center gap-2 text-sm font-bold text-slate-600 mb-2"><Coins :size="16" class="text-orange-500" />商品单价</label>
                   <div class="relative">
                     <span class="absolute left-4 top-1/2 -translate-y-1/2 text-orange-500 font-bold">¥</span>
-                    <input v-model.number="editPrice" type="number" min="1" class="w-full pl-8 pr-4 py-3.5 bg-slate-50/50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-orange-100/50 focus:border-orange-500 outline-none transition-all font-bold text-slate-700" />
+                    <input v-model.number="editPrice" type="text" inputmode="decimal" class="w-full pl-8 pr-4 py-3.5 bg-slate-50/50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-orange-100/50 focus:border-orange-500 outline-none transition-all font-bold text-slate-700" />
                   </div>
                 </div>
                 <div>

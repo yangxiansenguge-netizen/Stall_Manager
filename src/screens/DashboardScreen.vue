@@ -17,11 +17,13 @@ import {
   Trophy,
   Activity,
   Plus,
-  MapPin
+  MapPin,
+  ArrowUpRight
 } from 'lucide-vue-next';
 import { buildApiUrl } from '../utils/api';
 import stallCartImage from '../../摊位车.png';
 import { useLocationStore } from '../stores/location';
+import NearbyMarketCard from '../components/NearbyMarketCard.vue';
 
 const locationStore = useLocationStore();
 const weather = ref('26°C 适合出摊');
@@ -85,7 +87,15 @@ const dashboardKpis = ref([
 ]);
 
 const bannerSections = ref<Record<string, any[]>>({})
-const revenueRanking = ref<any[]>([])
+
+const nearbyMarkets = ref([
+  { id: 1, name: '大学城创意夜市', distance: '500m', tag: '今晚热门', image: 'https://images.unsplash.com/photo-1555529771-835f59fc5efe?w=600' },
+  { id: 2, name: '滨江周末集市', distance: '1.2km', tag: '周末限定', image: 'https://images.unsplash.com/photo-1533900298318-6b8da08a523e?w=600' },
+  { id: 3, name: '老街美食广场', distance: '1.8km', tag: '老牌集市', image: 'https://images.unsplash.com/photo-1565123409695-7b5ef63a2efb?w=600' },
+  { id: 4, name: '花城文创市集', distance: '2.3km', tag: '新开推荐', image: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=600' },
+  { id: 5, name: '星河潮流摊区', distance: '3.0km', tag: '🔥 今晚热门', image: 'https://images.unsplash.com/photo-1505843513577-22bb7d21e455?w=600' },
+  { id: 6, name: '学院路跳蚤市场', distance: '3.5km', tag: '学生最爱', image: 'https://images.unsplash.com/photo-1555529771-835f59fc5efe?w=600' },
+])
 
 const fetchBanners = async () => {
   try {
@@ -98,24 +108,6 @@ const fetchBanners = async () => {
       bannerSections.value = p.data
     }
   } catch { /* keep defaults */ }
-}
-
-const fetchRanking = async () => {
-  try {
-    const token = localStorage.getItem('stall_auth_token') || ''
-    const resp = await fetch(buildApiUrl('/api/dashboard/ranking'), {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    const p = await resp.json()
-    if (p.success && p.data) {
-      revenueRanking.value = p.data.map((s: any, i: number) => ({
-        name: s.name,
-        amount: '¥' + ((Number(s.revenue || 0) / 100).toFixed(0)),
-        rank: i + 1,
-        seed: 'stall' + i
-      }))
-    }
-  } catch { }
 }
 
 const fetchDashboard = async () => {
@@ -139,7 +131,6 @@ onMounted(() => {
   fetchDashboard();
   fetchWeather();
   fetchBanners();
-  fetchRanking();
   greetingTimer = setInterval(() => {
     currentTime.value = new Date();
   }, 30 * 1000);
@@ -174,41 +165,6 @@ onUnmounted(() => {
             </p>
           </div>
 
-          <!-- <div class="grid grid-cols-3 gap-2.5 pt-1 md:gap-3 md:pt-0 lg:max-w-[36rem]">
-            <div class="rounded-[1.05rem] border border-white/70 bg-white/72 px-3 py-2.5 shadow-[0_10px_24px_rgba(0,0,0,0.04)] backdrop-blur-sm md:rounded-[1.15rem] md:px-3.5 md:py-3 h-full">
-              <div class="flex items-center gap-2.5 md:gap-3 h-full">
-                <div class="flex h-8 w-8 items-center justify-center rounded-[0.9rem] bg-amber-400 shadow-lg shadow-amber-400/15 md:h-9 md:w-9 md:rounded-[0.95rem]">
-                  <Sun class="h-4 w-4 fill-white text-white md:h-4.5 md:w-4.5" />
-                </div>
-                <div class="min-w-0 text-left">
-                  <p class="text-[9px] font-bold uppercase tracking-[0.12em] text-stone-400 md:text-[10px] md:tracking-[0.14em]">晴朗 26°C</p>
-                  <p class="mt-1 text-[13px] font-black leading-none text-stone-900 md:text-[1.05rem]">适合出摊</p>
-                </div>
-              </div>
-            </div>
-            <div class="rounded-[1.05rem] border border-white/70 bg-white/72 px-3 py-2.5 shadow-[0_10px_24px_rgba(0,0,0,0.04)] backdrop-blur-sm md:rounded-[1.15rem] md:px-3.5 md:py-3 h-full">
-              <div class="flex items-center gap-2.5 md:gap-3 h-full">
-                <div class="flex h-8 w-8 items-center justify-center rounded-[0.9rem] bg-amber-400 shadow-lg shadow-amber-400/15 md:h-9 md:w-9 md:rounded-[0.95rem]">
-                  <Clock3 class="h-4 w-4 text-white md:h-4.5 md:w-4.5" />
-                </div>
-                <div class="min-w-0 text-left">
-                  <p class="text-[9px] font-bold uppercase tracking-[0.12em] text-stone-400 md:text-[10px] md:tracking-[0.14em]">推荐出摊时段</p>
-                  <p class="mt-1 text-[13px] font-black leading-none text-stone-900 md:text-[1.05rem]">17:00 - 22:00</p>
-                </div>
-              </div>
-            </div>
-            <div @click="locateMe" class="cursor-pointer rounded-[1.05rem] border border-white/70 bg-white/72 px-3 py-2.5 shadow-[0_10px_24px_rgba(0,0,0,0.04)] backdrop-blur-sm hover:shadow-md transition-all md:rounded-[1.15rem] md:px-3.5 md:py-3 h-full">
-              <div class="flex items-center gap-2.5 md:gap-3 h-full">
-                <div class="flex h-8 w-8 items-center justify-center rounded-[0.9rem] bg-amber-400 shadow-lg shadow-amber-400/15 md:h-9 md:w-9 md:rounded-[0.95rem]">
-                  <MapPin class="h-4 w-4 fill-white text-white md:h-4.5 md:w-4.5" />
-                </div>
-                <div class="min-w-0 text-left">
-                  <p class="text-[9px] font-bold uppercase tracking-[0.12em] text-stone-400 md:text-[10px] md:tracking-[0.14em]">{{ locatingMe ? '定位中...' : '我的位置' }}</p>
-                  <p class="mt-1 text-[13px] font-black leading-none text-stone-900 truncate md:text-[1.05rem]">{{ userLocation || '点击定位' }}</p>
-                </div>
-              </div>
-            </div>
-          </div> -->
               <div class="mt-3 flex flex-wrap items-center gap-2">
                 <!-- 温度 -->
                 <div
@@ -220,32 +176,6 @@ onUnmounted(() => {
               
                   <component :is="weatherIcon" class="h-3.5 w-3.5 text-amber-500" />
                   <span class="text-[13px] font-medium text-stone-700">{{ weather }}</span>
-                </div>
-
-                <!-- 时间 -->
-                <div
-                  class="flex h-9 items-center gap-1.5 rounded-full
-                  border border-stone-100
-                  bg-white/85
-                  px-3
-                  shadow-sm">
-              
-                  <Clock3 class="h-3.5 w-3.5 text-amber-500" />
-              
-                  <span class="text-[13px] font-medium text-stone-700">
-                    17:00 - 22:00
-                  </span>
-              
-                  <span
-                    class="rounded-full
-                    bg-orange-50
-                    px-1.5 py-[2px]
-                    text-[10px]
-                    font-semibold
-                    text-orange-600">
-              
-                    高峰
-                  </span>
                 </div>
 
                 <!-- 定位 -->
@@ -387,51 +317,32 @@ onUnmounted(() => {
       </div>
     </section>
 
-    <!-- 销量排行 -->
-    <section class="space-y-4">
-      <div class="flex items-center justify-between px-1">
-        <h4 class="text-[11px] font-bold uppercase tracking-[0.18em] text-stone-400">销量排行</h4>
-        <span class="rounded-full bg-stone-100 px-2 py-0.5 text-[9px] font-bold uppercase text-stone-400">实时更新</span>
-      </div>
-      <div class="rounded-[1.7rem] border border-stone-50 bg-white p-1.5 shadow-sm sm:rounded-[2rem] sm:p-2">
-        <div v-for="(stall, i) in revenueRanking" :key="i" class="group flex items-center gap-3 rounded-[1.35rem] p-3 transition-colors hover:bg-stone-50 sm:gap-4 sm:p-3.5">
-          <div :class="[
-            'flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-black italic shadow-sm sm:h-8 sm:w-8 sm:text-sm',
-            stall.rank === 1 ? 'bg-amber-400 text-stone-900 ring-2 ring-amber-100' :
-            stall.rank === 2 ? 'bg-stone-200 text-stone-900' :
-            stall.rank === 3 ? 'bg-orange-100 text-orange-700' :
-            'bg-stone-50 text-stone-300'
-          ]">
-            {{ stall.rank }}
-          </div>
-          <div class="h-10 w-10 shrink-0 overflow-hidden rounded-xl border border-stone-100 sm:h-11 sm:w-11">
-            <img
-              :src="`https://picsum.photos/seed/${stall.seed}/100/100`"
-              alt="Stall"
-              class="h-full w-full object-cover"
-              referrerPolicy="no-referrer"
-            />
-          </div>
-          <div class="min-w-0 flex-1">
-            <div class="flex items-center justify-between gap-3">
-              <p class="truncate text-sm font-bold tracking-tight text-stone-900">{{ stall.name }}</p>
-              <p class="shrink-0 text-sm font-black text-stone-900">{{ stall.amount }}</p>
-            </div>
-            <div class="mt-1.5 flex items-center justify-between gap-3">
-              <div class="h-1.5 w-full max-w-[7.5rem] overflow-hidden rounded-full bg-stone-100 sm:max-w-[9rem]">
-                <div
-                  class="h-full transition-all duration-1000"
-                  :class="stall.rank <= 3 ? 'bg-amber-400' : 'bg-stone-300'"
-                  :style="{ width: `${100 - i * 15}%` }"
-                />
-              </div>
-              <div class="flex shrink-0 items-center gap-0.5 text-[9px] font-bold text-emerald-600">
-                <TrendingUp class="h-2.5 w-2.5" />
-                <span>+3.2%</span>
-              </div>
-            </div>
-          </div>
+    <!-- 发现附近集市 -->
+    <section class="space-y-4 px-1">
+      <div class="flex items-end justify-between">
+        <div>
+          <h4 class="text-lg font-black tracking-tight text-stone-900">发现附近集市</h4>
+          <p class="flex items-center gap-1.5 mt-1 text-xs font-semibold text-stone-400">   
+          </p>
         </div>
+        <button class="flex items-center gap-1 text-xs font-bold text-amber-600 hover:text-amber-700 transition-colors shrink-0">
+          查看地图 <ArrowUpRight class="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      <div v-if="nearbyMarkets.length > 0" class="columns-2 sm:columns-3 lg:columns-4 gap-3 sm:gap-4">
+        <NearbyMarketCard
+          v-for="(market, i) in nearbyMarkets"
+          :key="market.id"
+          :market="market"
+          :index="i"
+        />
+      </div>
+
+      <div v-else class="flex flex-col items-center justify-center py-14 text-center">
+        <div class="text-5xl mb-3">🗺️</div>
+        <p class="text-sm font-bold text-stone-400">附近暂无可推荐集市</p>
+        <p class="mt-1 text-xs text-stone-400">切换位置或等待新的集市开放</p>
       </div>
     </section>
   </div>

@@ -143,14 +143,14 @@ const cartItems = computed(() => {
     .map(([id, quantity]) => {
       const product = products.value.find((p) => p.id === Number(id));
       if (!product || quantity <= 0) return null;
-      const effectivePrice = product.discountPercent ? Number((product.price * product.discountPercent / 100).toFixed(2)) : product.price;
+      const effectivePriceYuan = product.discountPercent ? (product.price * product.discountPercent / 10000) : (product.price / 100);
       return {
         id: product.id,
         name: product.name,
-        price: effectivePrice,
+        price: effectivePriceYuan,
         quantity,
         stock: product.stock,
-        subtotalCents: effectivePrice * 100 * quantity
+        subtotalCents: Math.round(effectivePriceYuan * 100 * quantity)
       };
     })
     .filter(
@@ -414,8 +414,8 @@ onMounted(async () => {
               </div>
               <div class="mt-2 flex items-center justify-between">
                 <div>
-                  <p v-if="product.discountPercent" class="text-xs text-slate-400 line-through">¥{{ product.price }}</p>
-                  <p class="text-base font-black text-orange-500">¥{{ product.discountPercent ? (product.price * product.discountPercent / 100).toFixed(2) : product.price }}</p>
+                  <p v-if="product.discountPercent" class="text-xs text-slate-400 line-through">¥{{ (product.price / 100).toFixed(2) }}</p>
+                  <p class="text-base font-black text-orange-500">¥{{ product.discountPercent ? (product.price * product.discountPercent / 10000).toFixed(2) : (product.price / 100).toFixed(2) }}</p>
                 </div>
                 <button
                   class="inline-flex items-center gap-1 rounded-lg bg-orange-500 px-2.5 py-1.5 text-xs font-bold text-white transition-colors hover:bg-orange-600"
@@ -443,7 +443,7 @@ onMounted(async () => {
             <div class="flex items-center justify-between gap-2">
               <div class="min-w-0">
                 <p class="truncate text-sm font-bold text-stone-900">{{ item.name }}</p>
-                <p class="text-xs text-stone-400">¥{{ item.price }} / 份</p>
+                <p class="text-xs text-stone-400">¥{{ Number(item.price).toFixed(2) }} / 份</p>
               </div>
               <button
                 class="rounded-md bg-rose-50 p-1 text-rose-500 hover:bg-rose-100"
