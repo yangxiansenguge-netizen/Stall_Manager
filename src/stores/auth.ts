@@ -22,6 +22,7 @@ export const useAuthStore = defineStore('auth', () => {
   const session = ref<AuthSession | null>(null)
   const isAuthLoading = ref(true)
   const isLoggedIn = ref(false)
+  const kickedMsg = ref('')
 
   const merchantName = computed(() => session.value?.merchantName ?? '')
 
@@ -42,7 +43,11 @@ export const useAuthStore = defineStore('auth', () => {
       const s = await authApi.profile(t)
       persistSession(s)
     } catch (e: any) {
-      // 只有 401 鉴权失败才清退，网络错误静默保留本地 session
+      // 被踢了先弹窗，不直接清退
+      if (e?.message?.includes('其他设备')) {
+        kickedMsg.value = e.message
+        return
+      }
       if (e?.message?.includes('401') || e?.message?.includes('鉴权') || e?.message?.includes('失效')) {
         logout()
       }
@@ -69,7 +74,13 @@ export const useAuthStore = defineStore('auth', () => {
     token.value = ''
     session.value = null
     isLoggedIn.value = false
+    kickedMsg.value = ''
   }
 
-  return { token, session, isAuthLoading, isLoggedIn, merchantName, checkAuth, login, register, logout }
+  const clearKicked = () => {
+    kickedMsg.value = ''
+    logout()
+  }
+
+  return { token, session, isAuthLoading, isLoggedIn, merchantName, kickedMsg, checkAuth, login, register, logout, clearKicked }
 })

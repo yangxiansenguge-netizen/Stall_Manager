@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Header from '../components/Header.vue'
 import BottomNav from '../components/BottomNav.vue'
@@ -12,7 +12,14 @@ const route = useRoute()
 const router = useRouter()
 const avatarUrl = ref('')
 
+// 心跳检测：每 15 秒检查是否被踢
+let kickPollTimer: ReturnType<typeof setInterval> | null = null
+const checkAlive = async () => {
+  if (!auth.isLoggedIn) return
+  await auth.checkAuth()
+}
 onMounted(async () => {
+  kickPollTimer = setInterval(checkAlive, 15000)
   try {
     const token = localStorage.getItem('stall_auth_token') || ''
     const resp = await fetch(buildApiUrl('/api/settings/overview'), {
@@ -36,6 +43,10 @@ const onTabChange = (tab: string) => {
 }
 
 defineExpose({})
+
+onBeforeUnmount(() => {
+  if (kickPollTimer) clearInterval(kickPollTimer)
+})
 </script>
 
 <template>
@@ -46,6 +57,20 @@ defineExpose({})
     </main>
     <BottomNav :active-tab="currentTab" @tab-change="onTabChange" />
     <ToastNotification />
+
+    <!-- 被踢出提示 -->
+    <Teleport to="body">
+      <div v-if="auth.kickedMsg" class="fixed inset-0 z-[200] flex items-center justify-center bg-stone-900/40 backdrop-blur-sm">
+        <div class="bg-white rounded-2xl p-6 mx-4 max-w-sm w-full shadow-2xl text-center">
+          <div class="w-14 h-14 mx-auto rounded-full bg-red-100 flex items-center justify-center mb-4">
+            <span class="text-2xl">⚠️</span>
+          </div>
+          <h3 class="text-lg font-black text-stone-900 mb-2">登录已失效</h3>
+          <p class="text-sm text-stone-500 leading-relaxed mb-6">{{ auth.kickedMsg }}</p>
+          <button @click="auth.clearKicked(); router.push('/login')" class="w-full bg-stone-900 hover:bg-stone-800 text-white rounded-xl py-3 text-sm font-bold transition">知道了</button>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import { Store, Search, Bell, ChevronDown } from 'lucide-vue-next';
+import { useRouter } from 'vue-router';
+import { Store, Search, Bell, ChevronDown, ArrowUpRight } from 'lucide-vue-next';
 import { buildApiUrl } from '../utils/api'
 import { useMessageStore } from '../stores/messageStore'
 
@@ -10,9 +11,9 @@ defineProps<{
   avatarUrl?: string;
 }>();
 
-interface NotifItem {
-  id: number; title: string; content: string; time: string; category: string;
-}
+const router = useRouter()
+
+interface NotifItem { id: number; title: string; content: string; time: string; category: string; }
 
 const { unreadCount, fetchUnreadCount } = useMessageStore()
 const showNotifications = ref(false);
@@ -25,15 +26,22 @@ const fetchNotifications = async () => {
     const p = await resp.json()
     if (p.success && p.data?.categories) {
       const all: NotifItem[] = []
-      for (const cat of p.data.categories) {
-        for (const m of (cat.messages || [])) {
-          all.push({ id: m.id, title: m.title, content: m.content || '', time: m.time, category: cat.type })
-        }
-      }
+      for (const cat of p.data.categories) for (const m of (cat.messages || []))
+        all.push({ id: m.id, title: m.title, content: m.content || '', time: m.time, category: cat.type })
       notifications.value = all.slice(0, 5)
     }
   } catch { }
 }
+
+const showQuickLinks = ref(false)
+
+const quickLinks = [
+  { label: '手动点单', desc: '进入收银台 · 快速下单', icon: '📋', to: '/business?view=manualOrder' },
+  { label: 'AI 经营分析', desc: '查看今日经营建议与方案', icon: '🤖', to: '/ai' },
+  { label: '商品管理', desc: '上架、编辑、管理商品', icon: '📦', to: '/business' },
+]
+
+const goTo = (to: string) => { showQuickLinks.value = false; router.push(to) }
 
 onMounted(() => { fetchUnreadCount(); fetchNotifications() })
 </script>
@@ -41,31 +49,37 @@ onMounted(() => { fetchUnreadCount(); fetchNotifications() })
 <template>
   <header class="fixed inset-x-0 top-0 z-50 border-b border-stone-100 bg-white/88 pt-[env(safe-area-inset-top)] backdrop-blur-xl">
     <div class="mx-auto flex min-h-16 max-w-6xl items-center justify-between gap-3 px-3 sm:px-4 md:min-h-20 md:gap-6">
-      <!-- Logo -->
       <div class="shrink-0">
         <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-400 shadow-lg shadow-amber-400/20 sm:h-11 sm:w-11">
           <Store class="h-5 w-5 text-white fill-white sm:h-6 sm:w-6" />
         </div>
       </div>
 
-      <!-- Search Bar -->
       <div class="relative min-w-0 flex-1">
         <div class="pointer-events-none absolute inset-y-0 left-4 flex items-center">
           <Search class="h-4 w-4 text-stone-400" />
         </div>
-        <input 
-          type="text" 
-          placeholder="搜索功能 / 摊位 / 数据" 
-          class="w-full rounded-full border border-stone-100 bg-stone-50 py-2.5 pl-11 pr-4 text-sm font-medium text-stone-700 outline-none transition-all placeholder:text-stone-300 focus:border-amber-300 focus:ring-4 focus:ring-amber-100/70"
-        />
+        <input @focus="showQuickLinks = true"
+          @blur="setTimeout(() => showQuickLinks = false, 200)"
+          type="text" placeholder="搜商品、搜功能、搜订单..."
+          class="w-full rounded-full border border-stone-100 bg-stone-50 py-2.5 pl-11 pr-4 text-sm font-medium text-stone-700 outline-none transition-all placeholder:text-stone-300 focus:border-amber-300 focus:ring-4 focus:ring-amber-100/70" />
+
+        <div v-if="showQuickLinks" class="absolute top-full left-0 right-0 mt-2 bg-white rounded-[1.25rem] shadow-2xl border border-stone-100 overflow-hidden z-50">
+          <div v-for="(item, i) in quickLinks" :key="i" @mousedown.prevent="goTo(item.to)"
+            class="flex items-center gap-3 px-4 py-3 hover:bg-amber-50 cursor-pointer transition border-b border-stone-50 last:border-0">
+            <span class="text-lg">{{ item.icon }}</span>
+            <span class="flex-1 min-w-0">
+              <span class="block text-sm font-extrabold text-stone-800">{{ item.label }}</span>
+              <span class="text-[10px] text-stone-400">{{ item.desc }}</span>
+            </span>
+            <ArrowUpRight class="h-3.5 w-3.5 text-stone-300 shrink-0" />
+          </div>
+        </div>
       </div>
 
-      <!-- Actions -->
       <div class="flex shrink-0 items-center gap-1.5 sm:gap-3">
-        <button 
-          @click="showNotifications = !showNotifications; if(showNotifications) fetchNotifications()"
-          class="relative rounded-full p-2 transition-colors hover:bg-stone-50 sm:p-2.5"
-        >
+        <button @click="showNotifications = !showNotifications; if(showNotifications) fetchNotifications()"
+          class="relative rounded-full p-2 transition-colors hover:bg-stone-50 sm:p-2.5">
           <Bell class="h-5 w-5 text-stone-900" />
           <span v-if="unreadCount > 0" class="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full border-2 border-white bg-rose-500 text-[8px] font-black text-white sm:right-2 sm:top-2">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
         </button>
@@ -81,14 +95,7 @@ onMounted(() => { fetchUnreadCount(); fetchNotifications() })
         </div>
       </div>
 
-      <Transition
-        enter-active-class="transition duration-200 ease-out"
-        enter-from-class="opacity-0 scale-95"
-        enter-to-class="opacity-100 scale-100"
-        leave-active-class="transition duration-150 ease-in"
-        leave-from-class="opacity-100 scale-100"
-        leave-to-class="opacity-0 scale-95"
-      >
+      <Transition enter-active-class="transition duration-200 ease-out" enter-from-class="opacity-0 scale-95" enter-to-class="opacity-100 scale-100" leave-active-class="transition duration-150 ease-in" leave-from-class="opacity-100 scale-100" leave-to-class="opacity-0 scale-95">
         <div v-if="showNotifications" class="absolute top-full right-4 mt-2 w-80 bg-white rounded-[1.5rem] shadow-2xl border border-stone-100 overflow-hidden">
           <div>
             <div class="p-4 bg-stone-50 border-b border-stone-100 flex justify-between items-center">
@@ -104,10 +111,8 @@ onMounted(() => { fetchUnreadCount(); fetchNotifications() })
                 <p class="text-[11px] font-medium text-stone-500 leading-relaxed truncate">{{ msg.content }}</p>
               </div>
             </div>
-            <button 
-              @click="showNotifications = false; onOpenMessages?.()"
-              class="w-full py-4 bg-stone-50 text-stone-400 font-bold text-xs hover:bg-stone-100 transition-colors"
-            >
+            <button @click="showNotifications = false; onOpenMessages?.()"
+              class="w-full py-4 bg-stone-50 text-stone-400 font-bold text-xs hover:bg-stone-100 transition-colors">
               查看全部历史消息
             </button>
           </div>
