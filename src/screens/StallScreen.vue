@@ -560,7 +560,6 @@ const handleFileChange = async (event: Event) => {
           <div class="flex flex-wrap items-center justify-center gap-1.5 md:gap-2 text-center sm:justify-start sm:text-left">
             <div class="h-1.5 w-1.5 rounded-full bg-orange-500"></div>
             <span class="text-[9px] md:text-[10px] font-black uppercase tracking-[0.2em] text-stone-400">Current Opportunities</span>
-            <span class="rounded-full bg-orange-50 px-2 py-0.5 md:px-2.5 md:py-1 text-[9px] md:text-[10px] font-black text-orange-500">空余 23 处</span>
           </div>
 
           <div class="grid items-center gap-3 md:gap-4 lg:grid-cols-[minmax(0,1fr)_11rem] lg:items-start">

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
+import { useAuthStore } from '../stores/auth';
 import {
   TrendingUp,
   Star,
@@ -46,6 +47,8 @@ const trackInventory = ref(false);
 const stallDays = ref('--');
 const avatarUrl = ref('');
 const coverUrl = ref('');
+const auth = useAuthStore();
+const profilePhone = ref('');
 const bio = ref('');
 const vipTag = ref('LOCAL');
 
@@ -82,6 +85,7 @@ const fetchOverview = async () => {
         profileName.value = p.merchantName || '商户';
         boothLocation.value = p.boothLocation || '--';
         avatarUrl.value = p.avatarUrl || '';
+        profilePhone.value = p.phone || auth.session?.phone || '--';
         bio.value = p.description || '';
         vipTag.value = p.vipTag || 'LOCAL';
         trackInventory.value = p.trackInventory === true;
@@ -396,28 +400,87 @@ onMounted(() => { fetchOverview(); });
     <!-- ===== 编辑个人信息弹窗 ===== -->
     <Teleport to="body">
       <Transition name="fade">
-        <div v-if="showEditModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" @click.self="showEditModal = false">
-          <div class="w-full max-w-md rounded-2xl bg-white shadow-2xl p-6">
-            <div class="flex items-center justify-between mb-5">
-              <h3 class="text-lg font-black text-stone-900">编辑个人信息</h3>
-              <button @click="showEditModal = false" class="rounded-xl p-2 hover:bg-stone-100">
-                <X class="h-4 w-4 text-stone-400" />
+        <div v-if="showEditModal" class="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/30 backdrop-blur-sm p-4" @click.self="showEditModal = false">
+          <div class="w-full max-w-sm rounded-[24px] p-5 max-h-[85vh] overflow-y-auto"
+            style="background:linear-gradient(180deg,#FFFCF5,#FFF8EC);box-shadow:0 8px 40px rgba(180,150,120,0.15)">
+
+            <!-- Header -->
+            <div class="flex items-start justify-between mb-5">
+              <div>
+                <span class="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-extrabold"
+                  style="background:#FEF3C7;color:#92400E">商户档案</span>
+                <h2 class="mt-2 text-xl font-extrabold tracking-tight" style="color:#292524">个人信息编辑</h2>
+                <p class="text-[11px] mt-0.5" style="color:#A8A29E">完善信息后，个人资料将实时更新展示</p>
+              </div>
+              <button @click="showEditModal = false" class="flex h-9 w-9 items-center justify-center rounded-full bg-white/80 text-stone-400 hover:text-stone-600 transition"
+                style="box-shadow:0 2px 8px rgba(0,0,0,0.04)">
+                <X class="h-4 w-4" />
               </button>
             </div>
-            <div class="space-y-4">
-              <div>
-                <label class="text-xs font-bold text-stone-500 mb-1.5 block">商户名称</label>
-                <input v-model="editName" class="w-full rounded-xl border border-stone-200 px-3 py-2.5 text-sm font-semibold text-stone-800 outline-none focus:border-amber-300" placeholder="请输入商户名称" maxlength="20" />
+
+            <!-- Preview Card -->
+            <div class="rounded-[18px] border border-amber-100/60 p-4 mb-6"
+              style="background:#FFFEFB;box-shadow:0 4px 16px rgba(200,170,140,0.1)">
+              <div class="flex items-center justify-between mb-3">
+                <span class="text-[10px] font-extrabold uppercase tracking-wider" style="color:#A8A29E">档案预览</span>
+                <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-extrabold"
+                  style="background:#D1FAE5;color:#065F46">
+                  <span class="w-1.5 h-1.5 rounded-full" style="background:#10B981" /> 合规备案
+                </span>
               </div>
-              <div>
-                <label class="text-xs font-bold text-stone-500 mb-1.5 block">个性签名</label>
-                <textarea v-model="editBio" rows="3" class="w-full resize-none rounded-xl border border-stone-200 px-3 py-2.5 text-sm font-semibold text-stone-800 outline-none focus:border-amber-300" placeholder="写一句话介绍自己..." maxlength="200"></textarea>
-                <p class="text-[10px] text-stone-400 mt-1">{{ editBio.length }}/200</p>
+              <div class="flex items-center gap-3">
+                <div class="flex h-12 w-12 items-center justify-center rounded-full"
+                  style="background:linear-gradient(135deg,#FEF3C7,#FDE68A)">
+                  <span class="text-lg font-extrabold" style="color:#B45309">{{ (editName || profileName || '摊').charAt(0) }}</span>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm font-extrabold truncate" style="color:#292524">{{ editName || profileName || '商户名称' }}</p>
+                  <p class="text-[11px] font-medium truncate mt-0.5" style="color:#A8A29E">备案编号：{{ profilePhone || '--' }}</p>
+                </div>
               </div>
+              <p class="mt-3 pt-3 border-t border-stone-100 text-[12px] leading-relaxed" style="color:#78716C">
+                {{ editBio || bio || '还没有个性签名，快写下你的经营理念吧 ✨' }}
+              </p>
             </div>
+
+            <!-- Form -->
+            <div class="space-y-4">
+              <div class="grid grid-cols-2 gap-3">
+                <label class="block">
+                  <span class="text-[11px] font-extrabold" style="color:#78716C">商户名称</span>
+                  <input v-model="editName" class="mt-1 w-full rounded-[14px] border px-3 py-2.5 text-sm font-semibold outline-none transition"
+                    style="border-color:#E7E5E4;background:#FFFEFB;color:#292524"
+                    :style="{borderColor: editName ? '#FCD34D' : '#E7E5E4'}"
+                    placeholder="名称" maxlength="20" />
+                </label>
+                <label class="block">
+                  <span class="text-[11px] font-extrabold" style="color:#78716C">联系电话</span>
+                  <input :value="profilePhone" disabled
+                    class="mt-1 w-full rounded-[14px] border px-3 py-2.5 text-sm font-semibold outline-none"
+                    style="border-color:#E7E5E4;background:#F5F5F4;color:#A8A29E" />
+                </label>
+              </div>
+              <label class="block">
+                <span class="text-[11px] font-extrabold" style="color:#78716C">个性签名</span>
+                <textarea v-model="editBio" rows="3" maxlength="200"
+                  class="mt-1 w-full resize-none rounded-[14px] border px-3 py-2.5 text-sm font-semibold outline-none transition"
+                  style="border-color:#E7E5E4;background:#FFFEFB;color:#292524"
+                  :style="{borderColor: editBio ? '#FCD34D' : '#E7E5E4'}"
+                  placeholder="写下你的经营理念、出摊心得或顾客评价..."></textarea>
+                <p class="text-right text-[10px] font-medium mt-1" :class="editBio.length > 180 ? 'text-red-400' : 'text-stone-400'">
+                  {{ editBio.length }}/200
+                </p>
+              </label>
+            </div>
+
+            <!-- Buttons -->
             <div class="mt-5 flex gap-3">
-              <button @click="showEditModal = false" class="flex-1 rounded-xl border border-stone-200 py-2.5 text-sm font-bold text-stone-500 hover:bg-stone-50">取消</button>
-              <button @click="submitProfile" class="flex-1 rounded-xl bg-amber-500 py-2.5 text-sm font-black text-white hover:bg-amber-600 transition-colors">保存</button>
+              <button @click="showEditModal = false"
+                class="flex-1 rounded-[14px] py-2.5 text-sm font-extrabold transition"
+                style="background:#F5F5F4;color:#78716C">退出</button>
+              <button @click="submitProfile"
+                class="flex-1 rounded-[14px] py-2.5 text-sm font-extrabold text-white transition active:scale-95"
+                style="background:linear-gradient(135deg,#F59E0B,#D97706);box-shadow:0 4px 12px rgba(245,158,11,0.25)">保存</button>
             </div>
           </div>
         </div>
@@ -427,60 +490,68 @@ onMounted(() => { fetchOverview(); });
     <!-- ===== 摊位管理弹窗 ===== -->
     <Teleport to="body">
       <Transition name="fade">
-        <div v-if="showStallModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" @click.self="showStallModal = false">
-          <div class="w-full max-w-md rounded-2xl bg-white shadow-2xl p-6">
-            <div class="flex items-center justify-between mb-5">
-              <h3 class="text-lg font-black text-stone-900">摊位管理</h3>
-              <button @click="showStallModal = false" class="rounded-xl p-2 hover:bg-stone-100">
-                <X class="h-4 w-4 text-stone-400" />
+        <div v-if="showStallModal" class="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/30 backdrop-blur-sm p-4" @click.self="showStallModal = false">
+          <div class="w-full max-w-sm rounded-[24px] p-5 max-h-[85vh] overflow-y-auto"
+            style="background:linear-gradient(180deg,#FFFCF5,#FFF8EC);box-shadow:0 8px 40px rgba(180,150,120,0.15)">
+            <div class="flex items-start justify-between mb-5">
+              <div>
+                <span class="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-extrabold"
+                  style="background:#FEF3C7;color:#92400E">摊位档案</span>
+                <h2 class="mt-2 text-xl font-extrabold tracking-tight" style="color:#292524">摊位管理</h2>
+              </div>
+              <button @click="showStallModal = false" class="flex h-9 w-9 items-center justify-center rounded-full bg-white/80 text-stone-400 hover:text-stone-600 transition"
+                style="box-shadow:0 2px 8px rgba(0,0,0,0.04)">
+                <X class="h-4 w-4" />
               </button>
             </div>
 
             <template v-if="stallDetail.hasApplication">
-              <div class="space-y-3">
-                <div class="flex items-center justify-between rounded-xl bg-stone-50 p-3">
-                  <span class="text-xs font-bold text-stone-500">申请状态</span>
-                  <span :class="['inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-black',
-                    stallDetail.applicationStatus === 'APPROVED' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600']">
+              <div class="space-y-2.5">
+                <div class="flex items-center justify-between rounded-[14px] p-3" style="background:#FFFEFB">
+                  <span class="text-[11px] font-extrabold" style="color:#78716C">申请状态</span>
+                  <span :class="['inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-extrabold',
+                    stallDetail.applicationStatus === 'APPROVED' ? 'text-[#065F46]' : 'text-[#92400E]']"
+                    :style="{background: stallDetail.applicationStatus === 'APPROVED' ? '#D1FAE5' : '#FEF3C7'}">
                     <CheckCircle2 v-if="stallDetail.applicationStatus === 'APPROVED'" class="h-3 w-3" />
                     <AlertCircle v-else class="h-3 w-3" />
                     {{ stallDetail.applicationStatus === 'APPROVED' ? '已通过' : stallDetail.applicationStatus === 'REJECTED' ? '未通过' : '审核中' }}
                   </span>
                 </div>
-                <div v-if="stallDetail.stallName" class="flex items-center justify-between rounded-xl bg-stone-50 p-3">
-                  <span class="text-xs font-bold text-stone-500">摊位名称</span>
-                  <span class="text-sm font-black text-stone-900">{{ stallDetail.stallName }}</span>
+                <div v-if="stallDetail.stallName" class="flex items-center justify-between rounded-[14px] p-3" style="background:#FFFEFB">
+                  <span class="text-[11px] font-extrabold" style="color:#78716C">摊位名称</span>
+                  <span class="text-sm font-extrabold" style="color:#292524">{{ stallDetail.stallName }}</span>
                 </div>
-                <div v-if="stallDetail.categoryName" class="flex items-center justify-between rounded-xl bg-stone-50 p-3">
-                  <span class="text-xs font-bold text-stone-500"><Tag class="h-3 w-3 inline mr-1" />经营类目</span>
-                  <span class="text-sm font-bold text-stone-700">{{ stallDetail.categoryName }}</span>
+                <div v-if="stallDetail.categoryName" class="flex items-center justify-between rounded-[14px] p-3" style="background:#FFFEFB">
+                  <span class="text-[11px] font-extrabold" style="color:#78716C"><Tag class="h-3 w-3 inline mr-1" />经营类目</span>
+                  <span class="text-sm font-bold" style="color:#44403C">{{ stallDetail.categoryName }}</span>
                 </div>
-                <div v-if="stallDetail.areaName" class="flex items-center justify-between rounded-xl bg-stone-50 p-3">
-                  <span class="text-xs font-bold text-stone-500"><MapPin class="h-3 w-3 inline mr-1" />经营地点</span>
-                  <span class="text-sm font-bold text-stone-700 truncate max-w-[180px]">{{ stallDetail.areaName }}</span>
+                <div v-if="stallDetail.areaName" class="flex items-center justify-between rounded-[14px] p-3" style="background:#FFFEFB">
+                  <span class="text-[11px] font-extrabold" style="color:#78716C"><MapPin class="h-3 w-3 inline mr-1" />经营地点</span>
+                  <span class="text-sm font-bold truncate max-w-[160px]" style="color:#44403C">{{ stallDetail.areaName }}</span>
                 </div>
-                <div v-if="stallDetail.plannedStartTime" class="flex items-center justify-between rounded-xl bg-stone-50 p-3">
-                  <span class="text-xs font-bold text-stone-500"><Clock class="h-3 w-3 inline mr-1" />计划开始</span>
-                  <span class="text-sm font-bold text-stone-700">{{ stallDetail.plannedStartTime.replace('T', ' ') }}</span>
+                <div v-if="stallDetail.plannedStartTime" class="flex items-center justify-between rounded-[14px] p-3" style="background:#FFFEFB">
+                  <span class="text-[11px] font-extrabold" style="color:#78716C"><Clock class="h-3 w-3 inline mr-1" />计划开始</span>
+                  <span class="text-sm font-bold" style="color:#44403C">{{ stallDetail.plannedStartTime.replace('T', ' ') }}</span>
                 </div>
-                <div v-if="stallDetail.stallCode" class="flex items-center justify-between rounded-xl bg-stone-50 p-3">
-                  <span class="text-xs font-bold text-stone-500">摊位编号</span>
-                  <span class="text-sm font-bold text-stone-700">{{ stallDetail.stallCode }}</span>
+                <div v-if="stallDetail.stallCode" class="flex items-center justify-between rounded-[14px] p-3" style="background:#FFFEFB">
+                  <span class="text-[11px] font-extrabold" style="color:#78716C">摊位编号</span>
+                  <span class="text-sm font-extrabold" style="color:#292524">{{ stallDetail.stallCode }}</span>
                 </div>
-                <div v-if="stallDetail.nextStep" class="rounded-xl bg-amber-50 p-3">
-                  <p class="text-xs font-bold text-amber-700">📋 {{ stallDetail.nextStep }}</p>
+                <div v-if="stallDetail.nextStep" class="rounded-[14px] p-3" style="background:#FFFBEB">
+                  <p class="text-[11px] font-extrabold" style="color:#B45309">📋 {{ stallDetail.nextStep }}</p>
                 </div>
               </div>
             </template>
             <template v-else>
-              <div class="text-center py-8">
-                <Store class="mx-auto h-10 w-10 text-stone-300 mb-3" />
-                <p class="text-sm font-bold text-stone-400">尚未申请摊位</p>
-                <p class="text-xs text-stone-300 mt-1">前往摊位页面提交入驻申请</p>
+              <div class="text-center py-10">
+                <Store class="mx-auto h-10 w-10 mb-3" style="color:#D6D3D1" />
+                <p class="text-sm font-extrabold" style="color:#A8A29E">尚未申请摊位</p>
+                <p class="text-[11px] mt-1" style="color:#D6D3D1">前往摊位页面提交入驻申请</p>
               </div>
             </template>
 
-            <button @click="showStallModal = false" class="mt-5 w-full rounded-xl bg-stone-900 py-2.5 text-sm font-black text-white">关闭</button>
+            <button @click="showStallModal = false" class="mt-5 w-full rounded-[14px] py-2.5 text-sm font-extrabold text-white transition active:scale-95"
+              style="background:linear-gradient(135deg,#292524,#44403C)">关闭</button>
           </div>
         </div>
       </Transition>

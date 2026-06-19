@@ -14,6 +14,7 @@ import {
 import AgreementModal from '../components/AgreementModal.vue';
 import { showToast } from '../composables/useToast';
 import { useAuthStore } from '../stores/auth';
+import { buildApiUrl } from '../utils/api';
 import backgroundVideo from '../../烟火气.mp4';
 
 const router = useRouter();
@@ -74,17 +75,38 @@ const validateRegisterPassword = () => {
   else registerPasswordError.value = ''
 }
 
-const fillLoginSmsCode = () => {
-  if (loading.value) return;
-  loginCredential.value = '123456';
-  showToast('info', '验证码', '验证码已发送，请查收');
-};
+const loginCountdown = ref(0)
+const registerCountdown = ref(0)
 
-const fillRegisterSmsCode = () => {
-  if (loading.value) return;
-  registerSmsCode.value = '123456';
-  showToast('info', '验证码', '验证码已发送，请查收');
-};
+const sendLoginSms = async () => {
+  if (loading.value || loginCountdown.value > 0) return
+  const phone = loginPhone.value.trim()
+  if (!isValidPhone(phone)) { showToast('error', '格式错误', '请输入11位手机号'); return }
+  try {
+    const resp = await fetch(buildApiUrl('/api/auth/sms/send'), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone })
+    })
+    const p = await resp.json()
+    if (p.success) { loginCountdown.value = 60; const t = setInterval(() => { loginCountdown.value--; if (loginCountdown.value <= 0) clearInterval(t) }, 1000); showToast('success', '验证码已发送', '请查收短信') }
+    else showToast('error', '发送失败', p.message)
+  } catch { showToast('error', '发送失败', '请稍后重试') }
+}
+
+const sendRegisterSms = async () => {
+  if (loading.value || registerCountdown.value > 0) return
+  const phone = registerPhone.value.trim()
+  if (!isValidPhone(phone)) { showToast('error', '格式错误', '请输入11位手机号'); return }
+  try {
+    const resp = await fetch(buildApiUrl('/api/auth/sms/send'), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone })
+    })
+    const p = await resp.json()
+    if (p.success) { registerCountdown.value = 60; const t = setInterval(() => { registerCountdown.value--; if (registerCountdown.value <= 0) clearInterval(t) }, 1000); showToast('success', '验证码已发送', '请查收短信') }
+    else showToast('error', '发送失败', p.message)
+  } catch { showToast('error', '发送失败', '请稍后重试') }
+}
 
 const onLogin = async () => {
   if (loading.value) {
@@ -298,10 +320,11 @@ const switchToLogin = () => {
                 <button
                   v-if="loginMode === 'code'"
                   type="button"
-                  @click="fillLoginSmsCode"
+                  @click="sendLoginSms"
                   class="absolute right-2.5 top-1/2 z-10 -translate-y-1/2 rounded-full border border-amber-100 bg-gradient-to-b from-amber-50 to-amber-100 px-2.5 py-1 text-[9px] font-bold text-amber-700 transition-all hover:scale-[1.02] hover:from-amber-100 hover:to-amber-200 sm:right-3 sm:px-3 sm:text-[11px]"
+                  :disabled="loginCountdown > 0"
                 >
-                  获取验证码
+                  {{ loginCountdown > 0 ? loginCountdown + 's' : '获取验证码' }}
                 </button>
                 <button
                   v-else
@@ -402,10 +425,11 @@ const switchToLogin = () => {
                 />
                 <button
                   type="button"
-                  @click="fillRegisterSmsCode"
+                  @click="sendRegisterSms"
+                  :disabled="registerCountdown > 0"
                   class="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full bg-amber-50 px-2.5 py-1 text-[9px] font-bold text-amber-600 transition-all hover:bg-amber-100 hover:text-amber-700 sm:right-3 sm:px-3 sm:text-[11px]"
                 >
-                  获取验证码
+                  {{ registerCountdown > 0 ? registerCountdown + 's' : '获取验证码' }}
                 </button>
               </div>
             </div>

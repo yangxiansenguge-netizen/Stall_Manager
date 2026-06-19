@@ -18,7 +18,24 @@ const { unreadCount, fetchUnreadCount } = useMessageStore()
 const showNotifications = ref(false);
 const notifications = ref<NotifItem[]>([])
 
-onMounted(() => { fetchUnreadCount() })
+const fetchNotifications = async () => {
+  try {
+    const token = localStorage.getItem('stall_auth_token') || ''
+    const resp = await fetch(buildApiUrl('/api/messages/center'), { headers: { Authorization: `Bearer ${token}` }})
+    const p = await resp.json()
+    if (p.success && p.data?.categories) {
+      const all: NotifItem[] = []
+      for (const cat of p.data.categories) {
+        for (const m of (cat.messages || [])) {
+          all.push({ id: m.id, title: m.title, content: m.content || '', time: m.time, category: cat.type })
+        }
+      }
+      notifications.value = all.slice(0, 5)
+    }
+  } catch { }
+}
+
+onMounted(() => { fetchUnreadCount(); fetchNotifications() })
 </script>
 
 <template>
@@ -46,7 +63,7 @@ onMounted(() => { fetchUnreadCount() })
       <!-- Actions -->
       <div class="flex shrink-0 items-center gap-1.5 sm:gap-3">
         <button 
-          @click="showNotifications = !showNotifications"
+          @click="showNotifications = !showNotifications; if(showNotifications) fetchNotifications()"
           class="relative rounded-full p-2 transition-colors hover:bg-stone-50 sm:p-2.5"
         >
           <Bell class="h-5 w-5 text-stone-900" />

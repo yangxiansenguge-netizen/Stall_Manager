@@ -209,7 +209,8 @@ const openAddModal = async () => {
       headers: { Authorization: `Bearer ${token}` },
     })
     const p = await resp.json()
-    if (!p.success || !p.data || p.data.currentStatus === 'NONE') {
+    const status = p.data?.currentStatus
+    if (!p.success || !p.data || status !== 'APPROVED') {
       showStallDialog.value = true
       return
     }
@@ -439,8 +440,8 @@ const productColors = ['bg-orange-50', 'bg-red-50', 'bg-amber-50', 'bg-emerald-5
       <div class="lg:col-span-2 bg-white/60 backdrop-blur-xl rounded-[24px] sm:rounded-[48px] p-4 sm:p-8 shadow-sm border border-blue-100/50">
         <h2 class="text-base sm:text-lg font-semibold mb-4 sm:mb-8">今日收入趋势</h2>
         <div class="h-[180px] sm:h-[260px] w-full">
-          <VueApexCharts v-if="revenueTrend.length" :key="chartKey" :options="chartOptions as any" :series="chartSeries" type="area" height="100%" />
-          <div v-else class="flex items-center justify-center h-full text-slate-300 text-xs sm:text-sm">暂无趋势数据</div>
+          <VueApexCharts v-if="revenueTrend.length > 0 && revenueTrend.some((d:any) => d.revenue > 0)" :key="chartKey" :options="chartOptions as any" :series="chartSeries" type="area" height="100%" />
+          <div v-else class="flex items-center justify-center h-full text-slate-300 text-xs sm:text-sm">{{ revenueTrend.length > 0 ? '今日暂无销售数据' : '暂无趋势数据' }}</div>
         </div>
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 mt-4 sm:mt-8">
           <div class="p-2 sm:p-4 rounded-2xl flex items-center gap-2 sm:gap-4 border border-transparent hover:border-slate-100 transition-all bg-blue-50/50">

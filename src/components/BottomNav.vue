@@ -1,17 +1,21 @@
 <script setup lang="ts">
-import { 
-  LayoutDashboard, 
-  Store, 
-  TrendingUp, 
+import { onMounted } from 'vue'
+import {
+  LayoutDashboard,
+  Store,
+  TrendingUp,
   MessageSquare,
-  User 
+  User
 } from 'lucide-vue-next';
 import type { Tab } from '../types';
+import { useMessageStore } from '../stores/messageStore';
 
 defineProps<{
   activeTab: Tab;
   onTabChange: (tab: Tab) => void;
 }>();
+
+const { unreadCount, fetchUnreadCount } = useMessageStore()
 
 const tabs = [
   { id: 'home', label: '首页', icon: LayoutDashboard },
@@ -20,6 +24,8 @@ const tabs = [
   { id: 'messages', label: '消息', icon: MessageSquare },
   { id: 'settings', label: '我的', icon: User },
 ] as const;
+
+onMounted(() => { fetchUnreadCount() })
 </script>
 
 <template>
@@ -37,7 +43,8 @@ const tabs = [
         ]"
       >
         <component :is="tab.icon" :class="['w-5 h-5', activeTab === tab.id ? 'fill-current' : '']" />
-        
+        <span v-if="tab.id === 'messages' && unreadCount > 0" class="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-red-500 text-[10px] font-black text-white px-1">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
+
         <Transition
           enter-active-class="transition-all duration-300"
           enter-from-class="opacity-0 translate-x-1"
